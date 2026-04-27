@@ -9,6 +9,7 @@ import { Logo } from "@/components/Logo";
 export default function GirisPage() {
   const router = useRouter();
   const [form, setForm] = useState({ email: "", password: "" });
+  const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -20,6 +21,7 @@ export default function GirisPage() {
     const result = await signIn("credentials", {
       email: form.email,
       password: form.password,
+      rememberMe: String(rememberMe),
       redirect: false,
     });
 
@@ -62,7 +64,12 @@ export default function GirisPage() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Şifre</label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-sm font-medium text-gray-700">Şifre</label>
+              <Link href="/sifremi-unuttum" className="text-xs text-[#0a7ea4] hover:underline">
+                Şifremi unuttum
+              </Link>
+            </div>
             <input
               type="password"
               name="password"
@@ -74,6 +81,20 @@ export default function GirisPage() {
               required
             />
           </div>
+
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="rememberMe"
+              checked={rememberMe}
+              onChange={(e) => setRememberMe(e.target.checked)}
+              className="w-4 h-4 rounded border-gray-300 text-[#0a7ea4] accent-[#0a7ea4] cursor-pointer"
+            />
+            <label htmlFor="rememberMe" className="text-sm text-gray-600 cursor-pointer select-none">
+              Beni hatırla
+            </label>
+          </div>
+
           <button
             type="submit"
             disabled={loading}
