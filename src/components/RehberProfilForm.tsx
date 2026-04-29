@@ -16,6 +16,7 @@ type FormState = {
   diller: DilEntry[];
   specialties: string[];
   experienceYears: number;
+  isAvailable: boolean;
   operatingCountries: string[];
   photoUrl: string;
 };
