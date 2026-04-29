@@ -294,13 +294,6 @@ export function RehberProfilForm({ profile, onFormChange }: Props) {
                       <ChevronDown className="w-4 h-4 text-gray-400 absolute right-2 top-2.5 pointer-events-none" />
                     </div>
                   </div>
-                  {/* Puan — sadece sertifika seçilmişse */}
-                  {entry.sertifika && entry.sertifika !== "Sertifikam yok" && (
-                    <input type="text" value={entry.sonuc}
-                      onChange={(e) => dilGuncelle(entry.dil, "sonuc", e.target.value)}
-                      placeholder={`${entry.sertifika} puanı / sonucu`}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0a7ea4] bg-white" />
-                  )}
                 </div>
               );
             })}
