@@ -68,6 +68,7 @@ export function RehberProfilForm({ profile, onFormChange }: Props) {
 
   const [licenses, setLicenses] = useState<{ country: string; licenseNo: string }[]>([]);
   const [ozelDil, setOzelDil] = useState("");
+  const [photoUploading, setPhotoUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState("");
@@ -136,6 +137,22 @@ export function RehberProfilForm({ profile, onFormChange }: Props) {
     }, 300);
   }
 
+  async function handlePhotoUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPhotoUploading(true);
+    const data = new FormData();
+    data.append("file", file);
+    data.append("upload_preset", "rehbersepeti");
+    const res = await fetch("https://api.cloudinary.com/v1_1/dkcrf1xw7/image/upload", {
+      method: "POST",
+      body: data,
+    });
+    const json = await res.json();
+    if (json.secure_url) updateForm({ ...form, photoUrl: json.secure_url });
+    setPhotoUploading(false);
+  }
+
   async function referansEkle(acente: AcenteOption) {
     setReferansEkleniyor(true);
     const res = await fetch("/api/referans", {
@@ -188,19 +205,22 @@ export function RehberProfilForm({ profile, onFormChange }: Props) {
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">Profil Fotoğrafı</label>
           <div className="flex items-center gap-4">
-            <div className="w-20 h-20 rounded-2xl bg-gray-100 border-2 border-dashed border-gray-200 flex items-center justify-center overflow-hidden shrink-0">
-              {form.photoUrl ? (
+            <div className="w-20 h-20 rounded-2xl bg-gray-100 border-2 border-dashed border-gray-200 flex items-center justify-center overflow-hidden shrink-0 relative">
+              {photoUploading ? (
+                <div className="w-6 h-6 border-2 border-[#0a7ea4] border-t-transparent rounded-full animate-spin" />
+              ) : form.photoUrl ? (
                 <img src={form.photoUrl} alt="Profil" className="w-full h-full object-cover" />
               ) : (
                 <Camera className="w-7 h-7 text-gray-300" />
               )}
             </div>
-            <div className="flex-1 space-y-1.5">
-              <input type="url" value={form.photoUrl}
-                onChange={(e) => updateForm({ ...form, photoUrl: e.target.value })}
-                placeholder="Fotoğraf URL'si (https://...)"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0a7ea4]" />
-              <p className="text-xs text-gray-400">Fotoğrafını bir yere yükle ve linkini yapıştır. Yakında doğrudan yükleme eklenecek.</p>
+            <div className="flex-1 space-y-2">
+              <label className={`flex items-center gap-2 w-fit px-4 py-2 rounded-lg border text-sm font-medium transition-colors cursor-pointer ${photoUploading ? "opacity-50 pointer-events-none" : "border-[#0a7ea4] text-[#0a7ea4] hover:bg-[#0a7ea4]/5"}`}>
+                <Camera className="w-4 h-4" />
+                {photoUploading ? "Yükleniyor..." : "Fotoğraf Seç"}
+                <input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} disabled={photoUploading} />
+              </label>
+              <p className="text-xs text-gray-400">JPG, PNG, WEBP — max 10MB</p>
             </div>
           </div>
         </div>
