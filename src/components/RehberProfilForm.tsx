@@ -329,7 +329,10 @@ export function RehberProfilForm({ profile, onFormChange }: Props) {
                         placeholder={code === "TR" ? "Örn: TR-12345" : `${cfg.licenseType} numarası`}
                         className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0a7ea4] bg-white" />
                       <p className="text-xs text-gray-400">{cfg.description}</p>
-                      {cfg.required && <p className="text-xs text-orange-600">⚠️ Zorunlu — belge olmadan profil bu ülkede görünmez.</p>}
+                      {cfg.required
+                        ? <p className="text-xs text-orange-600">⚠️ Zorunlu — belge olmadan profil bu ülkede görünmez.</p>
+                        : <p className="text-xs text-gray-400">İsteğe bağlı — belgeniz varsa girin, yoksa boş bırakabilirsiniz.</p>
+                      }
                     </div>
                   )}
                   {existing?.status === "REJECTED" && <p className="text-xs text-red-600">Belgeniz reddedildi. Doğru bilgileri tekrar girin.</p>}
