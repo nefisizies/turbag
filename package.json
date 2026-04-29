@@ -10,7 +10,8 @@
     "lint": "eslint",
     "postinstall": "prisma generate",
     "test:e2e": "playwright test",
-    "test:e2e:headed": "playwright test --headed"
+    "test:e2e:headed": "playwright test --headed",
+    "test:api": "npx tsx tests/api-check.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.2",
