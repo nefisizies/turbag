@@ -18,6 +18,7 @@ export default async function RehberProfilPublic({
     include: {
       tours: { where: { isActive: true } },
       user: { select: { createdAt: true } },
+      languages: { select: { dil: true, seviye: true } },
       _count: { select: { tours: true } },
     },
   });
@@ -69,7 +70,7 @@ export default async function RehberProfilPublic({
               <Globe className="w-4 h-4 text-gray-400" />
               <div className="flex flex-wrap gap-1">
                 {rehber.languages.map((l) => (
-                  <span key={l} className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{l}</span>
+                  <span key={l.dil} className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{l.dil}</span>
                 ))}
               </div>
             </div>

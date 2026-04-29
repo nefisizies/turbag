@@ -15,11 +15,12 @@ export default async function RehberlerPage({
   const rehberler = await prisma.rehberProfile.findMany({
     where: {
       ...(params.sehir ? { city: { contains: params.sehir, mode: "insensitive" } } : {}),
-      ...(params.dil ? { languages: { has: params.dil } } : {}),
+      ...(params.dil ? { languages: { some: { dil: params.dil } } } : {}),
       ...(params.uzmanlik ? { specialties: { has: params.uzmanlik } } : {}),
     },
     include: {
       user: { select: { createdAt: true } },
+      languages: { select: { dil: true } },
       _count: { select: { tours: true } },
     },
     orderBy: { createdAt: "desc" },
@@ -80,7 +81,7 @@ export default async function RehberlerPage({
                 {r.languages.length > 0 && (
                   <div className="flex items-center gap-1 mb-2 flex-wrap">
                     <Globe className="w-3.5 h-3.5 text-gray-400" />
-                    <span className="text-xs text-gray-500">{r.languages.slice(0, 3).join(", ")}</span>
+                    <span className="text-xs text-gray-500">{r.languages.slice(0, 3).map((l) => l.dil).join(", ")}</span>
                   </div>
                 )}
 

@@ -117,7 +117,7 @@ export default async function RehberDashboard() {
               )}
               {(profile?.languages?.length ?? 0) > 0 && (
                 <span className="flex items-center gap-1">
-                  <Globe className="w-3.5 h-3.5" /> {profile?.languages.slice(0, 3).join(", ")}
+                  <Globe className="w-3.5 h-3.5" /> {profile?.languages.slice(0, 3).map((l) => l.dil).join(", ")}
                   {(profile?.languages.length ?? 0) > 3 && ` +${(profile?.languages.length ?? 0) - 3}`}
                 </span>
               )}
