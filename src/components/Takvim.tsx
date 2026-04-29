@@ -30,8 +30,7 @@ export function Takvim({ initialTarih }: { initialTarih: string | null }) {
   const [vurgulananTarih] = useState<string | null>(initialTarih);
   const [etkinlikler, setEtkinlikler] = useState<Etkinlik[]>([]);
   const [yukleniyor, setYukleniyor] = useState(false);
-  const [yuklendi, setYuklendi] = useState(false);
-  const pendingAcma = useRef(initialTarih);
+  const modalAcildi = useRef(false);
 
   // Modal state
   const [modal, setModal] = useState<{ mod: "ekle" | "duzenle"; etkinlik?: Etkinlik; tarih?: string } | null>(null);
@@ -39,35 +38,34 @@ export function Takvim({ initialTarih }: { initialTarih: string | null }) {
   const [kaydediyor, setKaydediyor] = useState(false);
   const [formHata, setFormHata] = useState("");
 
+  function modalAc(tarih: string) {
+    const dt = `${tarih}T09:00`;
+    setForm({ baslik: "", baslangic: dt, bitis: "", notlar: "" });
+    setFormHata("");
+    setModal({ mod: "ekle", tarih });
+  }
+
   const etkinlikleriYukle = useCallback(async () => {
     setYukleniyor(true);
     const res = await fetch(`/api/takvim?yil=${yil}&ay=${ay}`);
     const data = await res.json();
     setEtkinlikler(data);
     setYukleniyor(false);
-    setYuklendi(true);
   }, [yil, ay]);
 
-  useEffect(() => { etkinlikleriYukle(); }, [etkinlikleriYukle]);
-
-  // Seçili günün modalını ilk yüklemeden sonra otomatik aç
   useEffect(() => {
-    if (!yuklendi) return;
-    const t = pendingAcma.current;
-    if (t) { pendingAcma.current = null; modalAc(t); }
-  }, [yuklendi]); // eslint-disable-line react-hooks/exhaustive-deps
+    etkinlikleriYukle().then(() => {
+      if (initialTarih && !modalAcildi.current) {
+        modalAcildi.current = true;
+        modalAc(initialTarih);
+      }
+    });
+  }, [etkinlikleriYukle]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function ayDegistir(fark: number) {
     const d = new Date(yil, ay - 1 + fark, 1);
     setYil(d.getFullYear());
     setAy(d.getMonth() + 1);
-  }
-
-  function modalAc(tarih: string) {
-    const dt = `${tarih}T09:00`;
-    setForm({ baslik: "", baslangic: dt, bitis: "", notlar: "" });
-    setFormHata("");
-    setModal({ mod: "ekle", tarih });
   }
 
   function duzenleAc(e: Etkinlik) {
