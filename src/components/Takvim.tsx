@@ -19,10 +19,20 @@ function pad2(n: number) { return String(n).padStart(2, "0"); }
 function toDateStr(d: Date) { return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`; }
 function toInputDatetime(iso: string) { return iso.slice(0, 16); }
 
+function urlTarih(): string | null {
+  if (typeof window === "undefined") return null;
+  return new URLSearchParams(window.location.search).get("tarih");
+}
+
 export function Takvim() {
   const bugun = new Date();
-  const [yil, setYil] = useState(bugun.getFullYear());
-  const [ay, setAy] = useState(bugun.getMonth() + 1);
+  const [yil, setYil] = useState(() => {
+    const t = urlTarih(); return t ? new Date(t + "T00:00").getFullYear() : bugun.getFullYear();
+  });
+  const [ay, setAy] = useState(() => {
+    const t = urlTarih(); return t ? new Date(t + "T00:00").getMonth() + 1 : bugun.getMonth() + 1;
+  });
+  const [vurgulananTarih] = useState<string | null>(urlTarih);
   const [etkinlikler, setEtkinlikler] = useState<Etkinlik[]>([]);
   const [yukleniyor, setYukleniyor] = useState(false);
 
@@ -175,6 +185,7 @@ export function Takvim() {
             const tarihStr = `${yil}-${pad2(ay)}-${pad2(gun)}`;
             const gunEtkinlikleri = etkinlikMap.get(tarihStr) ?? [];
             const bugunMu = tarihStr === bugunStr;
+            const vurgulananMu = tarihStr === vurgulananTarih;
 
             return (
               <div
@@ -182,11 +193,11 @@ export function Takvim() {
                 onClick={() => modalAc(tarihStr)}
                 className={`min-h-[96px] border-r border-b border-gray-100 p-2 cursor-pointer hover:bg-[#0a7ea4]/3 transition-colors group ${
                   i % 7 === 6 ? "border-r-0" : ""
-                }`}
+                } ${vurgulananMu ? "bg-amber-50 ring-2 ring-inset ring-amber-400" : ""}`}
               >
                 <div className="flex items-center justify-between mb-1">
                   <span className={`text-sm font-medium w-7 h-7 flex items-center justify-center rounded-full ${
-                    bugunMu ? "bg-[#0a7ea4] text-white" : "text-gray-700 group-hover:text-[#0a7ea4]"
+                    bugunMu ? "bg-[#0a7ea4] text-white" : vurgulananMu ? "bg-amber-400 text-white" : "text-gray-700 group-hover:text-[#0a7ea4]"
                   }`}>
                     {gun}
                   </span>

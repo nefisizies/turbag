@@ -58,7 +58,7 @@ export function MiniTakvim({ etkinlikler, yil, ay }: { etkinlikler: MiniEtkinlik
           return (
             <button
               key={i}
-              onClick={() => router.push("/dashboard/rehber/takvim")}
+              onClick={() => router.push(`/dashboard/rehber/takvim?tarih=${tarihStr}`)}
               className={`aspect-square flex items-center justify-center rounded text-[11px] font-medium transition-colors cursor-pointer ${
                 bugunMu
                   ? "bg-[#0a7ea4] text-white"
