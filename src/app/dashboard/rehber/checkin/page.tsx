@@ -41,7 +41,7 @@ export default async function CheckInPage() {
       rehberId={profile.id}
       unvan={UNVAN_LABEL[profile.unvan] ?? profile.unvan}
       checkInSayisi={profile.checkInSayisi}
-      benzersizSehir={profile.benzersizSehir}
+      aktifAySayisi={profile.aktifAySayisi}
       rozetler={profile.rozetler.map((r) => ({
         ...r,
         kazanildiAt: r.kazanildiAt.toISOString(),

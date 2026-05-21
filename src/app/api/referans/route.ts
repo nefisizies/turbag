@@ -2,6 +2,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
+import { bildirimGonder } from "@/lib/bildirimGonder";
 
 // Rehber referans ekle
 export async function POST(req: Request) {
@@ -51,8 +52,19 @@ export async function POST(req: Request) {
 
   const referans = await prisma.referans.create({
     data: { rehberId: profile.id, acenteId },
-    include: { acente: { select: { companyName: true, city: true } } },
+    include: { acente: { select: { companyName: true, city: true, userId: true } } },
   });
+
+  // Acentenin kullanıcısına REFERANS bildirimi gönder (async, hata sessiz geçsin)
+  bildirimGonder({
+    userId: referans.acente.userId,
+    tip: "REFERANS",
+    baslik: "Yeni referans başvurusu",
+    metin: profile.name
+      ? `${profile.name} size referans başvurusu yaptı.`
+      : "Bir rehber size referans başvurusu yaptı.",
+    link: "/dashboard/acente/referanslar",
+  }).catch(() => {});
 
   return NextResponse.json(referans, { status: 201 });
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { bildirimGonder } from "@/lib/bildirimGonder";
 
 // GET — belirli bir kullanıcıyla konuşma geçmişi (?ile=userId)
 export async function GET(req: NextRequest) {
@@ -57,6 +58,17 @@ export async function POST(req: NextRequest) {
   const mesaj = await prisma.message.create({
     data: { fromUserId: session.user.id, toUserId, content: content.trim() },
   });
+
+  // Alıcıya MESAJ bildirimi gönder (async, hata sessiz geçsin)
+  bildirimGonder({
+    userId: toUserId,
+    tip: "MESAJ",
+    baslik: "Yeni mesaj aldınız",
+    metin: content.trim().slice(0, 80),
+    link: gondericRol === "REHBER"
+      ? "/dashboard/acente/mesajlar"
+      : "/dashboard/rehber/mesajlar",
+  }).catch(() => {});
 
   return NextResponse.json(mesaj, { status: 201 });
 }

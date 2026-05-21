@@ -27,14 +27,14 @@ export function CheckInSayfasiClient({
   rehberId,
   unvan,
   checkInSayisi,
-  benzersizSehir,
+  aktifAySayisi,
   rozetler,
   ilkCheckInler,
 }: {
   rehberId: string;
   unvan: string;
   checkInSayisi: number;
-  benzersizSehir: number;
+  aktifAySayisi: number;
   rozetler: Rozet[];
   ilkCheckInler: CheckIn[];
 }) {
@@ -57,8 +57,8 @@ export function CheckInSayfasiClient({
         </div>
         <div className="rounded-2xl p-5 text-center" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
           <Award className="w-5 h-5 mx-auto mb-2 text-purple-400" />
-          <div className="text-3xl font-bold text-white">{benzersizSehir}</div>
-          <div className="text-xs text-white/50 mt-1">Farklı Şehir</div>
+          <div className="text-3xl font-bold text-white">{aktifAySayisi}</div>
+          <div className="text-xs text-white/50 mt-1">Aktif Ay</div>
         </div>
       </div>
 

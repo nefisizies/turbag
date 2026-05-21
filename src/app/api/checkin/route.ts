@@ -32,22 +32,49 @@ export async function POST(req: Request) {
     },
   });
 
-  // Sayaçları güncelle
-  const [toplamCheckin, benzersizSehirler] = await Promise.all([
-    prisma.checkIn.count({ where: { rehberId: profile.id } }),
-    prisma.checkIn.findMany({
-      where: { rehberId: profile.id, sehir: { not: null } },
-      select: { sehir: true },
-      distinct: ["sehir"],
-    }),
-  ]);
+  // Bu rehberin tüm check-in'lerini çek, günlük cap uygula
+  const tumCheckinler = await prisma.checkIn.findMany({
+    where: { rehberId: profile.id },
+    select: { createdAt: true },
+    orderBy: { createdAt: "asc" },
+  });
 
+  const toplamCheckin = tumCheckinler.length;
+
+  // Günlük cap: her günden max 2 sayılır
+  const gunSayac = new Map<string, number>();
+  let sayilanCheckin = 0;
+  for (const ci of tumCheckinler) {
+    const gun = ci.createdAt.toISOString().slice(0, 10); // "2026-05-21"
+    const mevcut = gunSayac.get(gun) ?? 0;
+    if (mevcut < 2) {
+      gunSayac.set(gun, mevcut + 1);
+      sayilanCheckin++;
+    }
+  }
+
+  // Aktif ay sayısı: kaç farklı yıl+ay kombinasyonunda en az 1 check-in var
+  const aylar = new Set(tumCheckinler.map(ci => ci.createdAt.toISOString().slice(0, 7))); // "2026-05"
+  const aktifAySayisi = aylar.size;
+
+  // benzersizSehir istatistik için kalsın
+  const benzersizSehirler = await prisma.checkIn.findMany({
+    where: { rehberId: profile.id, sehir: { not: null } },
+    select: { sehir: true },
+    distinct: ["sehir"],
+  });
   const benzersizSehir = benzersizSehirler.length;
-  const unvan = hesaplaUnvan(toplamCheckin, benzersizSehir);
+
+  const unvan = hesaplaUnvan(sayilanCheckin, aktifAySayisi);
 
   await prisma.rehberProfile.update({
     where: { id: profile.id },
-    data: { checkInSayisi: toplamCheckin, benzersizSehir, unvan: unvan as UnvanTip },
+    data: {
+      checkInSayisi: toplamCheckin,  // gerçek toplam (cap'siz) — istatistik için
+      benzersizSehir,                 // kalsın
+      aktifAySayisi,
+      unvan: unvan as UnvanTip,
+    },
   });
 
   // Rozet kontrolü
@@ -56,12 +83,12 @@ export async function POST(req: Request) {
   return NextResponse.json(checkin, { status: 201 });
 }
 
-function hesaplaUnvan(sayi: number, sehir: number): string {
-  if (sayi >= 100 && sehir >= 10) return "ELIT_REHBER";
-  if (sayi >= 50 && sehir >= 7) return "SUPER_REHBER";
-  if (sayi >= 25 && sehir >= 5) return "UZMAN_REHBER";
-  if (sayi >= 10 && sehir >= 3) return "DENEYIMLI_REHBER";
-  if (sayi >= 3) return "AKTIF_REHBER";
+function hesaplaUnvan(sayilanCheckin: number, aktifAy: number): string {
+  if (sayilanCheckin >= 200 && aktifAy >= 12) return "ELIT_REHBER";
+  if (sayilanCheckin >= 100 && aktifAy >= 8)  return "SUPER_REHBER";
+  if (sayilanCheckin >= 50  && aktifAy >= 4)  return "UZMAN_REHBER";
+  if (sayilanCheckin >= 20  && aktifAy >= 2)  return "DENEYIMLI_REHBER";
+  if (sayilanCheckin >= 5)                    return "AKTIF_REHBER";
   return "YENI_REHBER";
 }
 

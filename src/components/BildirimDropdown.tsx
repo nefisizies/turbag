@@ -56,7 +56,7 @@ export function BildirimDropdown() {
     await fetch("/api/bildirim", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: "all" }),
+      body: JSON.stringify({ ids: [] }),
     });
     setBildirimler(b => b.map(x => ({ ...x, okundu: true })));
     setOkunmamis(0);
@@ -66,7 +66,7 @@ export function BildirimDropdown() {
     await fetch("/api/bildirim", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id }),
+      body: JSON.stringify({ ids: [id] }),
     });
     setBildirimler(b => b.map(x => x.id === id ? { ...x, okundu: true } : x));
     setOkunmamis(n => Math.max(0, n - 1));

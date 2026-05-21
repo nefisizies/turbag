@@ -7,10 +7,13 @@ import { prisma } from "@/lib/prisma";
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
-  const [rehberCount, acenteCount] = await Promise.all([
-    prisma.rehberProfile.count(),
-    prisma.acenteProfile.count(),
-  ]);
+  let rehberCount = 0, acenteCount = 0;
+  try {
+    [rehberCount, acenteCount] = await Promise.all([
+      prisma.rehberProfile.count(),
+      prisma.acenteProfile.count(),
+    ]);
+  } catch { /* DB geçici olarak ulaşılamaz */ }
 
   return (
     <div className="min-h-screen bg-stone-950 text-white">

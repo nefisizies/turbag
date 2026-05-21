@@ -51,6 +51,7 @@ model RehberProfile {
   unvan              UnvanTip                @default(YENI_REHBER)
   checkInSayisi      Int                     @default(0)
   benzersizSehir     Int                     @default(0)
+  aktifAySayisi      Int                     @default(0)
   bloklar            AcenteRehberBlok[]
   referanslar        Referans[]
   languages          RehberDil[]
@@ -61,6 +62,7 @@ model RehberProfile {
   acenteEtkinlikleri AcenteTakvimEtkinlik[]
   checkInler         CheckIn[]
   rozetler           RehberRozet[]
+  ilanBasvurular     IlanBasvuru[]
 }
 
 model RehberDil {
@@ -104,6 +106,7 @@ model AcenteProfile {
   referanslar    Referans[]
   etkinlikler    AcenteTakvimEtkinlik[]
   turProgramlari TurProgrami[]
+  ilanlar        Ilan[]
 }
 
 model TurProgrami {
@@ -348,4 +351,42 @@ enum UnvanTip {
   UZMAN_REHBER
   SUPER_REHBER
   ELIT_REHBER
+}
+
+model Ilan {
+  id         String        @id @default(cuid())
+  acenteId   String
+  baslik     String
+  aciklama   String?
+  sehir      String?
+  tarih      DateTime?
+  sure       String?
+  ucret      String?
+  diller     String[]      @default([])
+  aktif      Boolean       @default(true)
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+  acente     AcenteProfile @relation(fields: [acenteId], references: [id], onDelete: Cascade)
+  basvurular IlanBasvuru[]
+}
+
+model IlanBasvuru {
+  id        String        @id @default(cuid())
+  ilanId    String
+  rehberId  String
+  mesaj     String?
+  durum     BasvuruDurum  @default(BEKLIYOR)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  ilan      Ilan          @relation(fields: [ilanId], references: [id], onDelete: Cascade)
+  rehber    RehberProfile @relation(fields: [rehberId], references: [id], onDelete: Cascade)
+
+  @@unique([ilanId, rehberId])
+}
+
+enum BasvuruDurum {
+  BEKLIYOR
+  INCELENIYOR
+  KABUL
+  RED
 }
