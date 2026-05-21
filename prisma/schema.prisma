@@ -62,7 +62,6 @@ model RehberProfile {
   acenteEtkinlikleri AcenteTakvimEtkinlik[]
   checkInler         CheckIn[]
   rozetler           RehberRozet[]
-  ilanBasvurular     IlanBasvuru[]
 }
 
 model RehberDil {
@@ -367,26 +366,4 @@ model Ilan {
   createdAt  DateTime      @default(now())
   updatedAt  DateTime      @updatedAt
   acente     AcenteProfile @relation(fields: [acenteId], references: [id], onDelete: Cascade)
-  basvurular IlanBasvuru[]
-}
-
-model IlanBasvuru {
-  id        String        @id @default(cuid())
-  ilanId    String
-  rehberId  String
-  mesaj     String?
-  durum     BasvuruDurum  @default(BEKLIYOR)
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
-  ilan      Ilan          @relation(fields: [ilanId], references: [id], onDelete: Cascade)
-  rehber    RehberProfile @relation(fields: [rehberId], references: [id], onDelete: Cascade)
-
-  @@unique([ilanId, rehberId])
-}
-
-enum BasvuruDurum {
-  BEKLIYOR
-  INCELENIYOR
-  KABUL
-  RED
 }

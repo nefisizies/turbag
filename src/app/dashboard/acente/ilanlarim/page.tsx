@@ -17,12 +17,10 @@ export default async function IlanlarimPage() {
   const ilanlar = acenteProfile
     ? await prisma.ilan.findMany({
         where: { acenteId: acenteProfile.id },
-        include: { _count: { select: { basvurular: true } } },
         orderBy: { createdAt: "desc" },
       })
     : [];
 
-  // Dates must be serialized for client component
   const serialized = ilanlar.map(i => ({
     ...i,
     tarih: i.tarih ? i.tarih.toISOString() : null,
