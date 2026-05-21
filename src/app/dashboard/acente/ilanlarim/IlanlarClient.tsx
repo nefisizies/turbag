@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Loader2, X, MapPin, Calendar, Clock, DollarSign, Globe } from "lucide-react";
+import { Plus, Loader2, X, MapPin, Calendar, Clock, DollarSign, Globe, Search } from "lucide-react";
+import Link from "next/link";
 
 interface Ilan {
   id: string;
@@ -98,6 +99,13 @@ export function IlanlarClient({ ilanlar: ilkIlanlar }: Props) {
                 {ilan.sure && <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{ilan.sure}</span>}
                 {ilan.ucret && <span className="flex items-center gap-1"><DollarSign className="w-3 h-3" />{ilan.ucret}</span>}
                 {ilan.diller.length > 0 && <span className="flex items-center gap-1"><Globe className="w-3 h-3" />{ilan.diller.join(", ")}</span>}
+              </div>
+              <div className="mt-4 pt-3" style={{ borderTop: "1px solid var(--border-1)" }}>
+                <Link href={`/dashboard/acente/ilanlarim/${ilan.id}/rehber-bul`}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold hover:opacity-90 transition-opacity"
+                  style={{ background: "var(--upe-teal)", color: "#fff" }}>
+                  <Search className="w-3.5 h-3.5" /> Bu tur için rehber bul
+                </Link>
               </div>
             </div>
           ))}
