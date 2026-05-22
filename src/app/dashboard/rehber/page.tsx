@@ -8,7 +8,7 @@ import Link from "next/link";
 import {
   User, Star, MessageCircle, MapPin, Globe, Briefcase,
   CheckCircle, Clock, TrendingUp, CalendarDays, Trophy,
-  ArrowRight, Rss, Plus,
+  ArrowRight, Rss, Plus, Bell,
 } from "lucide-react";
 import { MiniTakvim } from "@/components/MiniTakvim";
 import { HizliEtkinlikEkle } from "@/components/HizliEtkinlikEkle";
@@ -52,7 +52,7 @@ export default async function RehberDashboard() {
   const buAyBaslangic = new Date(simdi.getFullYear(), simdi.getMonth(), 1);
   const buAyBitis = new Date(simdi.getFullYear(), simdi.getMonth() + 1, 1);
 
-  const [unreadCount, totalMessages, reviewData, sonMesajlar, yaklasanEtkinlikler, buAyEtkinlikler] =
+  const [unreadCount, totalMessages, reviewData, sonMesajlar, yaklasanEtkinlikler, buAyEtkinlikler, gelenDavetler] =
     await Promise.all([
       prisma.message.count({ where: { toUserId: session.user.id, isRead: false } }),
       prisma.message.count({ where: { toUserId: session.user.id } }),
@@ -78,6 +78,16 @@ export default async function RehberDashboard() {
           baslangic: { lt: buAyBitis },
           OR: [{ bitis: null }, { bitis: { gte: buAyBaslangic } }, { baslangic: { gte: buAyBaslangic } }],
         },
+      }) : Promise.resolve([]),
+      profile ? prisma.acenteTakvimEtkinlik.findMany({
+        where: {
+          rehberId: profile.id,
+          baslangic: { gte: simdi },
+          rehberYanit: "BEKLIYOR",
+        },
+        orderBy: { baslangic: "asc" },
+        take: 5,
+        include: { acente: { select: { companyName: true, city: true, logoUrl: true } } },
       }) : Promise.resolve([]),
     ]);
 
@@ -165,6 +175,48 @@ export default async function RehberDashboard() {
           </Link>
         ))}
       </div>
+
+      {/* Gelen Davetler — sadece bekleyen varsa göster */}
+      {gelenDavetler.length > 0 && (
+        <div className="card" style={{ padding: 0, overflow: "hidden", border: "1px solid rgba(13,115,119,0.3)" }}>
+          <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: "1px solid var(--border-1)", background: "var(--upe-teal-50)" }}>
+            <h2 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: "var(--upe-ink)", display: "flex", alignItems: "center", gap: 8 }}>
+              <Bell size={15} style={{ color: "var(--upe-teal)" }} />
+              Acente Davetleri
+              <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 9999, background: "var(--upe-teal)", color: "#fff" }}>
+                {gelenDavetler.length} yeni
+              </span>
+            </h2>
+            <span style={{ fontSize: 12, color: "var(--fg-3)" }}>Yanıt bekliyor</span>
+          </div>
+          {gelenDavetler.map((davet, i) => {
+            const bas = new Date(davet.baslangic);
+            const aylar = ["Oca","Şub","Mar","Nis","May","Haz","Tem","Ağu","Eyl","Eki","Kas","Ara"];
+            return (
+              <Link key={davet.id} href={`/dashboard/rehber/davet/${davet.id}`}
+                className="flex items-center gap-4 px-5 py-4 transition-colors"
+                style={{ borderTop: i > 0 ? "1px solid var(--border-1)" : "none", textDecoration: "none" }}
+              >
+                <div style={{ width: 44, height: 44, borderRadius: 10, background: "var(--upe-teal-50)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flexShrink: 0, border: "1px solid var(--upe-teal-200)" }}>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: "var(--upe-teal)", lineHeight: 1 }}>{String(bas.getDate()).padStart(2,"0")}</span>
+                  <span style={{ fontSize: 9, color: "var(--upe-teal-700)", marginTop: 2 }}>{aylar[bas.getMonth()]}</span>
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ margin: 0, fontSize: 13.5, fontWeight: 600, color: "var(--upe-ink)" }}>{davet.baslik}</p>
+                  <p style={{ margin: 0, fontSize: 12, color: "var(--fg-3)", marginTop: 2 }}>
+                    {davet.acente.companyName}{davet.acente.city ? ` · ${davet.acente.city}` : ""}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span style={{ fontSize: 11, fontWeight: 600, padding: "4px 12px", borderRadius: 9999, background: "rgba(234,179,8,0.1)", color: "#D97706", border: "1px solid rgba(234,179,8,0.2)" }}>
+                    Yanıtla →
+                  </span>
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+      )}
 
       {/* Upcoming events + check-in */}
       <div className="grid md:grid-cols-5 gap-5">
