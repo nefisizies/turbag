@@ -41,12 +41,30 @@ function Avatar({ name }: { name: string }) {
   );
 }
 
-export default async function FeedPage() {
+export default async function FeedPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ sekme?: string }>;
+}) {
   const session = await getServerSession(authOptions);
+  const params = await searchParams;
+  const isRehber = session?.user.role === "REHBER";
+  const sekme = params.sekme === "benim" && isRehber ? "benim" : "feed";
+
+  // Kendi paylaşımları için rehber profilini bul
+  let benimRehberId: string | null = null;
+  if (sekme === "benim" && isRehber) {
+    const profil = await prisma.rehberProfile.findUnique({
+      where: { userId: session!.user.id },
+      select: { id: true },
+    });
+    benimRehberId = profil?.id ?? null;
+  }
 
   const checkInler = await prisma.checkIn.findMany({
+    where: sekme === "benim" && benimRehberId ? { rehberId: benimRehberId } : {},
     orderBy: { createdAt: "desc" },
-    take: 40,
+    take: sekme === "benim" ? 100 : 40,
     include: {
       rehber: {
         select: { id: true, name: true, slug: true, photoUrl: true, city: true, unvan: true, checkInSayisi: true },
@@ -75,16 +93,67 @@ export default async function FeedPage() {
       </nav>
 
       <div style={{ maxWidth: 680, margin: "0 auto", padding: "28px 24px 80px" }}>
-        <div style={{ marginBottom: 26 }}>
-          <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700 }}>Rehber Feed</h1>
-          <p style={{ margin: "4px 0 0", fontSize: 13.5, color: "rgba(255,255,255,0.4)" }}>Rehberlerin tur anlarından canlı paylaşımlar</p>
+
+        {/* Başlık + sekmeler */}
+        <div style={{ marginBottom: 24 }}>
+          <h1 style={{ margin: "0 0 16px", fontSize: 24, fontWeight: 700 }}>
+            {sekme === "benim" ? "Paylaşımlarım" : "Rehber Feed"}
+          </h1>
+
+          {/* Sekme bar — sadece rehbere göster */}
+          {isRehber && (
+            <div style={{ display: "flex", gap: 8 }}>
+              <Link href="/kesfet/feed"
+                style={{
+                  fontSize: 13.5, fontWeight: 600, padding: "6px 16px", borderRadius: 9999,
+                  textDecoration: "none",
+                  background: sekme === "feed" ? "var(--upe-teal)" : "rgba(255,255,255,0.07)",
+                  color: sekme === "feed" ? "#fff" : "rgba(255,255,255,0.5)",
+                  border: sekme === "feed" ? "none" : "1px solid rgba(255,255,255,0.1)",
+                  transition: "all 150ms",
+                }}>
+                Feed
+              </Link>
+              <Link href="/kesfet/feed?sekme=benim"
+                style={{
+                  fontSize: 13.5, fontWeight: 600, padding: "6px 16px", borderRadius: 9999,
+                  textDecoration: "none",
+                  background: sekme === "benim" ? "var(--upe-teal)" : "rgba(255,255,255,0.07)",
+                  color: sekme === "benim" ? "#fff" : "rgba(255,255,255,0.5)",
+                  border: sekme === "benim" ? "none" : "1px solid rgba(255,255,255,0.1)",
+                  transition: "all 150ms",
+                }}>
+                Paylaşımlarım
+              </Link>
+            </div>
+          )}
+
+          {sekme === "feed" && (
+            <p style={{ margin: "10px 0 0", fontSize: 13.5, color: "rgba(255,255,255,0.4)" }}>
+              Rehberlerin tur anlarından canlı paylaşımlar
+            </p>
+          )}
+          {sekme === "benim" && (
+            <p style={{ margin: "10px 0 0", fontSize: 13.5, color: "rgba(255,255,255,0.4)" }}>
+              {checkInler.length} paylaşım
+            </p>
+          )}
         </div>
 
         {checkInler.length === 0 ? (
-          <div style={{ textAlign: "center", paddingTop: 80 }}>
+          <div style={{ textAlign: "center", paddingTop: 60 }}>
             <MapPin size={48} style={{ color: "rgba(255,255,255,0.15)", margin: "0 auto 12px" }} />
-            <p style={{ color: "rgba(255,255,255,0.4)" }}>Henüz paylaşım yok</p>
-            <p style={{ color: "rgba(255,255,255,0.25)", fontSize: 13, marginTop: 4 }}>Rehberler check-in yaptıkça burada görünür</p>
+            {sekme === "benim" ? (
+              <>
+                <p style={{ color: "rgba(255,255,255,0.4)" }}>Henüz paylaşım yapmadınız</p>
+                <Link href="/dashboard/rehber/checkin"
+                  style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 16, fontSize: 13.5, fontWeight: 600, padding: "8px 20px", borderRadius: 9999, background: "var(--upe-teal)", color: "#fff", textDecoration: "none" }}>
+                  <MapPin size={14} /> İlk check-in'ini yap
+                </Link>
+              </>
+            ) : (
+              <p style={{ color: "rgba(255,255,255,0.4)" }}>Henüz paylaşım yok</p>
+            )}
           </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -103,6 +172,7 @@ export default async function FeedPage() {
                   </div>
                 )}
                 <div style={{ padding: 20 }}>
+                  {/* Sekme "benim" olsa bile rehber satırını göster (profil linki için) */}
                   <Link href={`/rehber/${ci.rehber.slug}`} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, textDecoration: "none" }}>
                     {ci.rehber.photoUrl ? (
                       <img src={ci.rehber.photoUrl} alt="" style={{ width: 38, height: 38, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
@@ -145,10 +215,12 @@ export default async function FeedPage() {
                       </span>
                     )}
                     {ci.dogrulandi && <span style={{ color: "#4ADE80" }}>✅ Doğrulandı</span>}
-                    <Link href={`/rehber/${ci.rehber.slug}`}
-                      style={{ marginLeft: "auto", color: "var(--upe-teal-300)", fontWeight: 500, textDecoration: "none" }}>
-                      Profile git →
-                    </Link>
+                    {sekme === "feed" && (
+                      <Link href={`/rehber/${ci.rehber.slug}`}
+                        style={{ marginLeft: "auto", color: "var(--upe-teal-300)", fontWeight: 500, textDecoration: "none" }}>
+                        Profile git →
+                      </Link>
+                    )}
                   </div>
                 </div>
               </article>
@@ -157,8 +229,8 @@ export default async function FeedPage() {
         )}
       </div>
 
-      {/* FAB for rehber */}
-      {session?.user.role === "REHBER" && (
+      {/* FAB — rehber için check-in yap */}
+      {isRehber && (
         <Link href="/dashboard/rehber/checkin"
           style={{ position: "fixed", bottom: 80, right: 32, width: 56, height: 56, borderRadius: 9999, background: "var(--upe-teal)", color: "#fff", border: "none", boxShadow: "0 8px 24px rgba(13,115,119,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, textDecoration: "none" }}>
           <Plus size={22} />
