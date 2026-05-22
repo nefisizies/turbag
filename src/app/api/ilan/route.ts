@@ -17,7 +17,6 @@ export async function GET(req: Request) {
     },
     include: {
       acente: { select: { companyName: true, city: true, slug: true, logoUrl: true } },
-      _count: { select: { basvurular: true } },
     },
     orderBy: { createdAt: "desc" },
   });
