@@ -104,7 +104,7 @@ export function Takvim({ initialTarih }: { initialTarih: string | null }) {
   function ayDegistir(fark: number) { const d = new Date(yil, ay - 1 + fark, 1); setYil(d.getFullYear()); setAy(d.getMonth() + 1); }
 
   function duzenleAc(e: Etkinlik) {
-    setForm({ baslik: e.baslik, baslangic: toInputDatetime(e.baslangic), bitis: e.bitis ? toInputDatetime(e.bitis) : "", notlar: e.notlar ?? "" });
+    setForm({ baslik: e.baslik, baslangic: toInputDatetime(e.baslangic), bitis: e.bitis ? e.bitis.slice(0, 10) : "", notlar: e.notlar ?? "" });
     setFormHata(""); setModal({ mod: "duzenle", etkinlik: e });
   }
 
@@ -113,11 +113,11 @@ export function Takvim({ initialTarih }: { initialTarih: string | null }) {
     if (!form.baslangic) { setFormHata("Tarih zorunlu"); return; }
     setKaydediyor(true); setFormHata("");
     if (modal?.mod === "ekle") {
-      const res = await fetch("/api/takvim", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
+      const res = await fetch("/api/takvim", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, bitis: form.bitis ? `${form.bitis}T12:00` : "" }) });
       if (res.ok) { await etkinlikleriYukle(); await yilIstatistikYukle(); setModal(null); }
       else { const d = await res.json(); setFormHata(d.error || "Hata"); }
     } else if (modal?.etkinlik) {
-      const res = await fetch(`/api/takvim/${modal.etkinlik.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
+      const res = await fetch(`/api/takvim/${modal.etkinlik.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, bitis: form.bitis ? `${form.bitis}T12:00` : "" }) });
       if (res.ok) { await etkinlikleriYukle(); await yilIstatistikYukle(); setModal(null); }
       else { const d = await res.json(); setFormHata(d.error || "Hata"); }
     }
@@ -486,7 +486,7 @@ export function Takvim({ initialTarih }: { initialTarih: string | null }) {
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1" style={{ color: "var(--text-muted)" }}>Bitiş</label>
-                  <input type="datetime-local" value={form.bitis} onChange={(e) => setForm({ ...form, bitis: e.target.value })} className={inputCls} style={inputStyle}
+                  <input type="date" value={form.bitis} onChange={(e) => setForm({ ...form, bitis: e.target.value })} className={inputCls} style={inputStyle}
                     disabled={modal.etkinlik?.tur === "REZERVASYON"} />
                 </div>
               </div>
