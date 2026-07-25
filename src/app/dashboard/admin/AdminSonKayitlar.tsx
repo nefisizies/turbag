@@ -118,7 +118,7 @@ export function AdminSonKayitlar({ users }: { users: User[] }) {
           onClick={modalKapat}
         >
           <div
-            className="w-full max-w-md rounded-2xl p-6 space-y-4"
+            className="w-full max-w-md rounded-2xl p-6 space-y-4 overflow-y-auto max-h-[90vh]"
             style={{ background: "#130800", border: "1px solid rgba(255,255,255,0.12)" }}
             onClick={(e) => e.stopPropagation()}
           >

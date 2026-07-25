@@ -5,14 +5,41 @@ import { Upload, X, Check, AlertCircle, ChevronDown, ChevronUp } from "lucide-re
 import * as XLSX from "xlsx";
 
 const BILINEN_ALANLAR: Record<string, string> = {
-  ad: "ad", isim: "ad", "first name": "ad", firstname: "ad", name: "ad",
-  soyad: "soyad", "last name": "soyad", lastname: "soyad", surname: "soyad",
-  pasaport: "pasaportNo", "pasaport no": "pasaportNo", pasaportno: "pasaportNo", passport: "pasaportNo", "passport no": "pasaportNo",
-  uyruk: "uyruk", nationality: "uyruk", "vatandaşlık": "uyruk",
-  "doğum tarihi": "dogumTarihi", dogumtarihi: "dogumTarihi", "birth date": "dogumTarihi", birthdate: "dogumTarihi", dob: "dogumTarihi",
-  telefon: "telefon", tel: "telefon", phone: "telefon", "cep tel": "telefon",
-  "e-posta": "eposta", eposta: "eposta", email: "eposta", "e mail": "eposta",
+  // Ad
+  ad: "ad", adı: "ad", adi: "ad", isim: "ad", "müşteri adı": "ad", "kisi adi": "ad", "kişi adı": "ad",
+  "first name": "ad", firstname: "ad", name: "ad", "given name": "ad",
+  // Soyad
+  soyad: "soyad", soyadı: "soyad", soyadi: "soyad", soyisim: "soyad", "soy isim": "soyad", "soy adı": "soyad",
+  "last name": "soyad", lastname: "soyad", surname: "soyad", "family name": "soyad",
+  // Tam ad (tek sütun) — özel işlenir
+  "ad soyad": "adSoyad", "adsoyad": "adSoyad", "isim soyisim": "adSoyad", "isim soyad": "adSoyad",
+  "adı soyadı": "adSoyad", "full name": "adSoyad", fullname: "adSoyad", "name surname": "adSoyad",
+  "passenger name": "adSoyad", passenger: "adSoyad", "pax name": "adSoyad", pax: "adSoyad",
+  "müşteri": "adSoyad", musteri: "adSoyad",
+  // Pasaport / Kimlik
+  pasaport: "pasaportNo", "pasaport no": "pasaportNo", "pasaport no.": "pasaportNo", pasaportno: "pasaportNo",
+  "pasaport numarası": "pasaportNo", "pasaport numarasi": "pasaportNo", "pasaport #": "pasaportNo",
+  passport: "pasaportNo", "passport no": "pasaportNo", "passport number": "pasaportNo", passportno: "pasaportNo",
+  "kimlik numarası": "pasaportNo", "kimlik numarasi": "pasaportNo", "kimlik no": "pasaportNo", kimlik: "pasaportNo",
+  "tc kimlik": "pasaportNo", "tc no": "pasaportNo", tcno: "pasaportNo",
+  // Uyruk
+  uyruk: "uyruk", nationality: "uyruk", "vatandaşlık": "uyruk", vatandaslik: "uyruk",
+  ülke: "uyruk", ulke: "uyruk", country: "uyruk", milliyet: "uyruk",
+  // Doğum tarihi
+  "doğum tarihi": "dogumTarihi", "dogum tarihi": "dogumTarihi", dogumtarihi: "dogumTarihi",
+  "d.tarihi": "dogumTarihi", "d. tarihi": "dogumTarihi",
+  "birth date": "dogumTarihi", birthdate: "dogumTarihi", dob: "dogumTarihi", "date of birth": "dogumTarihi",
+  // Telefon
+  telefon: "telefon", "telefon no": "telefon", "telefon numarası": "telefon",
+  tel: "telefon", phone: "telefon", "cep tel": "telefon", "cep telefonu": "telefon",
+  gsm: "telefon", mobile: "telefon", "tel no": "telefon",
+  // E-posta
+  "e-posta": "eposta", eposta: "eposta", "e posta": "eposta",
+  email: "eposta", "e mail": "eposta", "e-mail": "eposta", mail: "eposta",
+  // Notlar
   notlar: "notlar", not: "notlar", notes: "notlar", note: "notlar",
+  açıklama: "notlar", aciklama: "notlar", remark: "notlar", remarks: "notlar",
+  "özel not": "notlar", "ozel not": "notlar",
 };
 
 type SatirVeri = {
@@ -39,12 +66,25 @@ function parseExcel(dosya: File): Promise<SatirVeri[]> {
         const satirlar: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
         if (satirlar.length < 2) { resolve([]); return; }
 
-        const basliklar = (satirlar[0] as string[]).map((b) => String(b ?? "").trim());
+        const trKucuk = (s: string) =>
+          s.trim().replace(/İ/g, "i").replace(/I/g, "ı").replace(/Ğ/g, "ğ").replace(/Ü/g, "ü").replace(/Ş/g, "ş").replace(/Ö/g, "ö").replace(/Ç/g, "ç").toLowerCase();
+
+        // İlk 5 satır içinde en çok sütun eşleşen satırı başlık olarak seç
+        let baslikSatirIdx = 0;
+        let enCokEslesme = 0;
+        for (let ri = 0; ri < Math.min(5, satirlar.length); ri++) {
+          const eslesme = (satirlar[ri] as any[]).filter(
+            (h) => BILINEN_ALANLAR[trKucuk(String(h ?? ""))]
+          ).length;
+          if (eslesme > enCokEslesme) { enCokEslesme = eslesme; baslikSatirIdx = ri; }
+        }
+
+        const basliklar = (satirlar[baslikSatirIdx] as string[]).map((b) => String(b ?? "").trim());
         const eslestirme: Record<number, string> = {};
         const ekBasliklar: Record<number, string> = {};
 
         basliklar.forEach((b, i) => {
-          const kuc = b.toLowerCase();
+          const kuc = trKucuk(b);
           if (BILINEN_ALANLAR[kuc]) {
             eslestirme[i] = BILINEN_ALANLAR[kuc];
           } else if (b) {
@@ -52,13 +92,25 @@ function parseExcel(dosya: File): Promise<SatirVeri[]> {
           }
         });
 
-        const sonuc: SatirVeri[] = satirlar.slice(1).filter((s) => s.some((h) => String(h ?? "").trim())).map((satir) => {
+        const sonuc: SatirVeri[] = satirlar.slice(baslikSatirIdx + 1).filter((s) => s.some((h) => String(h ?? "").trim())).map((satir) => {
           const kayit: any = {};
           const ekAlanlar: Record<string, string> = {};
 
           Object.entries(eslestirme).forEach(([idx, alan]) => {
             const val = String(satir[Number(idx)] ?? "").trim();
-            if (val) kayit[alan] = val;
+            if (!val) return;
+            if (alan === "adSoyad") {
+              // "Ad Soyad" tek sütunu: ilk kelime ad, geri kalan soyad
+              const parcalar = val.split(/\s+/);
+              if (parcalar.length >= 2) {
+                if (!kayit.ad) kayit.ad = parcalar[0];
+                if (!kayit.soyad) kayit.soyad = parcalar.slice(1).join(" ");
+              } else {
+                if (!kayit.ad) kayit.ad = val;
+              }
+            } else {
+              kayit[alan] = val;
+            }
           });
 
           Object.entries(ekBasliklar).forEach(([idx, baslik]) => {

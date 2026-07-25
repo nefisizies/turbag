@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, LogOut, Users, ShieldCheck, BarChart2, Award, MapPin, Trophy } from "lucide-react";
+import { LayoutDashboard, LogOut, Users, ShieldCheck, BarChart2, Award, MapPin, Trophy, Building2 } from "lucide-react";
 import { signOut } from "next-auth/react";
 
 const adminLinks = [
   { href: "/dashboard/admin",                label: "Genel Bakış",     icon: LayoutDashboard, exact: true },
   { href: "/dashboard/admin/kullanicilar",   label: "Kullanıcılar",    icon: Users,           exact: false },
+  { href: "/dashboard/admin/acenteler",      label: "Acenteler",       icon: Building2,       exact: false },
   { href: "/dashboard/admin/lisanslar",      label: "Lisans Onayları", icon: ShieldCheck,     exact: false },
   { href: "/dashboard/admin/feed",            label: "Check-in Feed",   icon: MapPin,          exact: false },
   { href: "/dashboard/admin/unvanlar",       label: "Ünvan Sistemi",   icon: Trophy,          exact: false },
