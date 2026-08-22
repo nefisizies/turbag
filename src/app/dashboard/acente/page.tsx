@@ -43,7 +43,7 @@ export default async function AcenteDashboard() {
       orderBy: { createdAt: "desc" }, take: 4,
       include: { from: { include: { rehberProfile: { select: { name: true, photoUrl: true } } } } },
     }),
-    Promise.resolve(0),
+    profile ? prisma.turProgrami.count({ where: { acenteId: profile.id, aktif: true } }) : Promise.resolve(0),
   ]);
 
   const companyName = profile?.companyName ?? session.user.email ?? "Acente";
@@ -151,7 +151,7 @@ export default async function AcenteDashboard() {
           sonMesajlar.map((msg, i) => {
             const ad = msg.from.rehberProfile?.name ?? msg.from.email ?? "Rehber";
             return (
-              <Link key={msg.id} href="/dashboard/acente/mesajlar"
+              <Link key={msg.id} href={`/dashboard/acente/mesajlar?ile=${msg.from.id}`}
                 className="flex items-center gap-3 px-5 py-3.5 transition-colors"
                 style={{ borderTop: "1px solid var(--border-1)", textDecoration: "none" }}
               >

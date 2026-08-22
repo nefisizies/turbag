@@ -30,7 +30,16 @@ export async function GET(req: Request) {
   } else if (sekme === "gecmis") {
     dateWhere = { baslangic: { lt: now } };
   } else if (sekme === "tumu" && ay) {
-    dateWhere = { baslangic: { gte: new Date(yil, ay - 1, 1), lt: new Date(yil, ay, 1) } };
+    // Ay içinde başlayan VEYA o aya taşan (ör. 30 Temmuz - 3 Ağustos) etkinlikler
+    const ayBaslangic = new Date(yil, ay - 1, 1);
+    const ayBitis = new Date(yil, ay, 1);
+    dateWhere = {
+      baslangic: { lt: ayBitis },
+      OR: [
+        { bitis: { gte: ayBaslangic } },
+        { bitis: null, baslangic: { gte: ayBaslangic } },
+      ],
+    };
   } else {
     dateWhere = { baslangic: { gte: new Date(now.getFullYear(), 0, 1), lt: new Date(now.getFullYear() + 1, 0, 1) } };
   }
@@ -50,7 +59,8 @@ export async function GET(req: Request) {
     },
     include: {
       rehber: { select: { id: true, name: true, city: true, photoUrl: true, slug: true } },
-      program: { select: { id: true, ad: true } },
+      program: { select: { id: true, ad: true, segmentler: true } },
+      _count: { select: { turistler: true } },
     },
     orderBy,
   });

@@ -1,13 +1,15 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 import {
   CalendarDays, SlidersHorizontal, Plus, X, MapPin, User,
-  Clock, Pencil, Trash2, AlertCircle, CheckCircle, Search, Users, FileSpreadsheet,
+  Clock, Pencil, Trash2, AlertCircle, CheckCircle, Search, Users,
 } from "lucide-react";
 import { SEHIR_LISTESI } from "@/lib/sehirler";
 import { RehberKarti } from "@/components/RehberKarti";
-import { TuristExcelYukle } from "@/components/TuristExcelYukle";
+import { TuristListesiModal } from "@/components/TuristListesiModal";
 
 type Rehber = { id: string; name: string; city: string | null; photoUrl: string | null; slug: string };
 
@@ -22,27 +24,31 @@ type Etkinlik = {
   rehberYanit: string | null;
   rehber: Rehber | null;
   programId: string | null;
-  program: { id: string; ad: string } | null;
+  program: { id: string; ad: string; segmentler: unknown } | null;
+  _count?: { turistler: number };
 };
 
 type ReferansRehber = { id: string; name: string; city: string | null };
 
-type Turist = {
-  id: string;
-  ad: string;
-  soyad: string;
-  pasaportNo: string | null;
-  uyruk: string | null;
-  dogumTarihi: string | null;
-  telefon: string | null;
-  eposta: string | null;
-  notlar: string | null;
-};
+type GunEtkinlik = { etkinlik: Etkinlik; lokasyon: string };
 
-const BOSH_TURIST = (): Omit<Turist, "id"> => ({
-  ad: "", soyad: "", pasaportNo: null, uyruk: null,
-  dogumTarihi: null, telefon: null, eposta: null, notlar: null,
-});
+function normalizeSegmentler(raw: unknown): { lokasyonlar: string[]; gun: number }[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((s: any) =>
+    Array.isArray(s?.lokasyonlar)
+      ? { lokasyonlar: s.lokasyonlar, gun: s.gun ?? 1 }
+      : { lokasyonlar: s?.lokasyon ? [s.lokasyon as string] : [], gun: s?.gun ?? 1 }
+  );
+}
+
+function segmentIcinLokasyon(segmentler: { lokasyonlar: string[]; gun: number }[], gunOffset: number): string | null {
+  let acc = 0;
+  for (const seg of segmentler) {
+    if (gunOffset < acc + seg.gun) return seg.lokasyonlar.join(", ") || null;
+    acc += seg.gun;
+  }
+  return null;
+}
 
 const AYLAR = ["Ocak","Şubat","Mart","Nisan","Mayıs","Haziran","Temmuz","Ağustos","Eylül","Ekim","Kasım","Aralık"];
 const AYLAR_KISA = ["Oca","Şub","Mar","Nis","May","Haz","Tem","Ağu","Eyl","Eki","Kas","Ara"];
@@ -71,7 +77,17 @@ const innerInputStyle = {
 // ─── Form state ───────────────────────────────────────────────────────────────
 const BOSH_FORM = () => ({ baslik: "", baslangic: "", bitis: "", lokasyon: "", rehberId: "", notlar: "" });
 
+type Program = { id: string; ad: string; sure: number };
+
 export function AcenteTakvim({ referansRehberler }: { referansRehberler: ReferansRehber[] }) {
+  const searchParams = useSearchParams();
+  const hedefGun = searchParams.get("gun");
+
+  const bugun = new Date();
+  const [gorunum, setGorunum] = useState<"takvim" | "liste">("takvim");
+  const [gridAy, setGridAy] = useState(() => hedefGun ? Number(hedefGun.split("-")[1]) : bugun.getMonth() + 1);
+  const [gridYil, setGridYil] = useState(() => hedefGun ? Number(hedefGun.split("-")[0]) : bugun.getFullYear());
+
   const [sekme, setSekme] = useState<SekmeId>("gelecek");
 
   // Filters
@@ -109,13 +125,21 @@ export function AcenteTakvim({ referansRehberler }: { referansRehberler: Referan
   // Turist modal
   const [turistEtkinlikId, setTuristEtkinlikId] = useState<string | null>(null);
   const [turistEtkinlikBaslik, setTuristEtkinlikBaslik] = useState("");
-  const [turistler, setTuristler] = useState<Turist[]>([]);
-  const [turistYukleniyor, setTuristYukleniyor] = useState(false);
-  const [turistEkleRow, setTuristEkleRow] = useState<Omit<Turist, "id"> | null>(null);
-  const [turistKaydediyor, setTuristKaydediyor] = useState(false);
-  const [turistDuzenleId, setTuristDuzenleId] = useState<string | null>(null);
-  const [turistDuzenleData, setTuristDuzenleData] = useState<Omit<Turist, "id"> | null>(null);
-  const [excelModalAcik, setExcelModalAcik] = useState(false);
+
+  // Gün detayı
+  const [gunDetayTarih, setGunDetayTarih] = useState<string | null>(hedefGun);
+
+  // Ekleme seçici: programdan mı, sıfırdan mı?
+  const [ekleSecimTarih, setEkleSecimTarih] = useState<string | null>(null); // null = kapalı, "" = tarihsiz
+
+  // Programdan oluştur modal
+  const [programlar, setProgramlar] = useState<Program[]>([]);
+  const [programSecimAcik, setProgramSecimAcik] = useState(false);
+  const [programSecimTarih, setProgramSecimTarih] = useState("");
+  const [programSecimId, setProgramSecimId] = useState("");
+  const [programSecimRehber, setProgramSecimRehber] = useState("");
+  const [programIsleniyor, setProgramIsleniyor] = useState(false);
+  const [programHata, setProgramHata] = useState("");
 
   // Rehber kart popup
   const [rehberKartId, setRehberKartId] = useState<string | null>(null);
@@ -125,11 +149,18 @@ export function AcenteTakvim({ referansRehberler }: { referansRehberler: Referan
   // ─── Veri yükleme ────────────────────────────────────────────────────────
   const yukle = useCallback(async () => {
     setYukleniyor(true);
-    const p = new URLSearchParams({ sekme, siralama });
+    const p = new URLSearchParams({ siralama });
+    if (gorunum === "takvim") {
+      p.set("sekme", "tumu");
+      p.set("ay", String(gridAy));
+      p.set("yil", String(gridYil));
+    } else {
+      p.set("sekme", sekme);
+      if (sekme === "tumu" && filtreAy) { p.set("ay", String(filtreAy)); p.set("yil", String(filtreYil)); }
+    }
     if (filtreLokasyon) p.set("lokasyon", filtreLokasyon);
     if (filtreRehber)  p.set("rehberId", filtreRehber);
     if (filtreProgram) p.set("programId", filtreProgram);
-    if (sekme === "tumu" && filtreAy) { p.set("ay", String(filtreAy)); p.set("yil", String(filtreYil)); }
     const res = await fetch(`/api/acente/takvim?${p}`);
     const data = await res.json();
     setEtkinlikler(data.etkinlikler ?? []);
@@ -137,9 +168,15 @@ export function AcenteTakvim({ referansRehberler }: { referansRehberler: Referan
     setFiltreRehberler(data.rehberler ?? []);
     setFiltreProgramlar(data.programlar ?? []);
     setYukleniyor(false);
-  }, [sekme, siralama, filtreLokasyon, filtreRehber, filtreProgram, filtreAy, filtreYil]);
+  }, [gorunum, gridAy, gridYil, sekme, siralama, filtreLokasyon, filtreRehber, filtreProgram, filtreAy, filtreYil]);
 
   useEffect(() => { yukle(); }, [yukle]);
+
+  useEffect(() => {
+    fetch("/api/acente/programlar")
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => setProgramlar(Array.isArray(data) ? data.map((p: Program) => ({ id: p.id, ad: p.ad, sure: p.sure })) : []));
+  }, []);
 
   // ─── Rehber müsaitlik sorgusu ─────────────────────────────────────────────
   useEffect(() => {
@@ -161,7 +198,7 @@ export function AcenteTakvim({ referansRehberler }: { referansRehberler: Referan
   }, [form.rehberId, form.baslangic, form.bitis]);
 
   // ─── Form helpers ─────────────────────────────────────────────────────────
-  function modalAc(etkinlik?: Etkinlik) {
+  function modalAc(etkinlik?: Etkinlik, onTarih?: string) {
     if (etkinlik) {
       setDuzenleId(etkinlik.id);
       setForm({
@@ -172,14 +209,60 @@ export function AcenteTakvim({ referansRehberler }: { referansRehberler: Referan
         rehberId: etkinlik.rehberId ?? "",
         notlar: etkinlik.notlar ?? "",
       });
-    } else if (duzenleId !== null) {
+    } else {
       setDuzenleId(null);
-      setForm(BOSH_FORM());
+      setForm({ ...BOSH_FORM(), baslangic: onTarih ?? "" });
     }
-    // else: yeni etkinlik draft'ı var, koru
     setFormHata("");
     setMesgulGunler([]);
     setModalAcik(true);
+  }
+
+  // ─── Ekleme seçici (Programdan mı, sıfırdan mı?) ──────────────────────────
+  function ekleSecimiAc(tarih?: string) {
+    setEkleSecimTarih(tarih ?? "");
+  }
+
+  function sifirdanSec() {
+    const tarih = ekleSecimTarih || undefined;
+    setEkleSecimTarih(null);
+    modalAc(undefined, tarih);
+  }
+
+  function programdanSec() {
+    const tarih = ekleSecimTarih || "";
+    setEkleSecimTarih(null);
+    setProgramSecimTarih(tarih);
+    setProgramSecimId("");
+    setProgramSecimRehber("");
+    setProgramHata("");
+    setProgramSecimAcik(true);
+  }
+
+  function programSecimKapat() {
+    setProgramSecimAcik(false);
+    setProgramHata("");
+  }
+
+  async function programdanOlustur() {
+    if (!programSecimId) { setProgramHata("Program seçin."); return; }
+    if (!programSecimTarih) { setProgramHata("Başlangıç tarihi zorunlu."); return; }
+    setProgramIsleniyor(true);
+    setProgramHata("");
+    const res = await fetch(`/api/acente/programlar/${programSecimId}/takvime-isle`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ baslangic: programSecimTarih, rehberId: programSecimRehber || null }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      setProgramHata(data.error ?? "Bir hata oluştu.");
+      setProgramIsleniyor(false);
+      return;
+    }
+    setProgramIsleniyor(false);
+    setProgramSecimAcik(false);
+    await yukle();
   }
 
   function modalKapat() {
@@ -230,51 +313,9 @@ export function AcenteTakvim({ referansRehberler }: { referansRehberler: Referan
     setRehberKartYukleniyor(false);
   }
 
-  async function turistAc(etkinlikId: string, baslik: string) {
+  function turistAc(etkinlikId: string, baslik: string) {
     setTuristEtkinlikId(etkinlikId);
     setTuristEtkinlikBaslik(baslik);
-    setTuristEkleRow(null);
-    setTuristDuzenleId(null);
-    setTuristYukleniyor(true);
-    const res = await fetch(`/api/acente/takvim/${etkinlikId}/turistler`);
-    setTuristler(res.ok ? await res.json() : []);
-    setTuristYukleniyor(false);
-  }
-
-  async function turistEkle() {
-    if (!turistEkleRow || !turistEtkinlikId) return;
-    if (!turistEkleRow.ad.trim() || !turistEkleRow.soyad.trim()) return;
-    setTuristKaydediyor(true);
-    const res = await fetch(`/api/acente/takvim/${turistEtkinlikId}/turistler`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(turistEkleRow),
-    });
-    if (res.ok) { const yeni = await res.json(); setTuristler((p) => [...p, yeni]); setTuristEkleRow(null); }
-    setTuristKaydediyor(false);
-  }
-
-  async function turistGuncelle() {
-    if (!turistDuzenleId || !turistDuzenleData || !turistEtkinlikId) return;
-    setTuristKaydediyor(true);
-    const res = await fetch(`/api/acente/takvim/${turistEtkinlikId}/turistler/${turistDuzenleId}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(turistDuzenleData),
-    });
-    if (res.ok) {
-      const g = await res.json();
-      setTuristler((p) => p.map((t) => t.id === turistDuzenleId ? g : t));
-      setTuristDuzenleId(null);
-      setTuristDuzenleData(null);
-    }
-    setTuristKaydediyor(false);
-  }
-
-  async function turistSil(turistId: string) {
-    if (!turistEtkinlikId) return;
-    await fetch(`/api/acente/takvim/${turistEtkinlikId}/turistler/${turistId}`, { method: "DELETE" });
-    setTuristler((p) => p.filter((t) => t.id !== turistId));
   }
 
   // ─── Gruplama ─────────────────────────────────────────────────────────────
@@ -289,8 +330,53 @@ export function AcenteTakvim({ referansRehberler }: { referansRehberler: Referan
     return g;
   }
 
+  function gunAnahtari(iso: string) {
+    const d = new Date(iso);
+    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  }
+
+  function gunlukGrupla(liste: Etkinlik[]) {
+    const g: Record<string, GunEtkinlik[]> = {};
+    liste.forEach((e) => {
+      const basD = new Date(e.baslangic);
+      const baslangicGun = new Date(basD.getFullYear(), basD.getMonth(), basD.getDate());
+      const bitD = e.bitis ? new Date(e.bitis) : basD;
+      const bitisGun = new Date(bitD.getFullYear(), bitD.getMonth(), bitD.getDate());
+      const segmentler = e.program?.segmentler ? normalizeSegmentler(e.program.segmentler) : [];
+
+      const cur = new Date(baslangicGun);
+      let offset = 0;
+      while (cur <= bitisGun) {
+        const key = `${cur.getFullYear()}-${pad2(cur.getMonth() + 1)}-${pad2(cur.getDate())}`;
+        const lokasyon = (segmentler.length > 0 ? segmentIcinLokasyon(segmentler, offset) : null) ?? e.lokasyon ?? e.baslik;
+        if (!g[key]) g[key] = [];
+        g[key].push({ etkinlik: e, lokasyon });
+        cur.setDate(cur.getDate() + 1);
+        offset += 1;
+      }
+    });
+    return g;
+  }
+
+  function ayDegistir(delta: number) {
+    let ay = gridAy + delta;
+    let yil = gridYil;
+    if (ay > 12) { ay = 1; yil += 1; }
+    if (ay < 1) { ay = 12; yil -= 1; }
+    setGridAy(ay);
+    setGridYil(yil);
+  }
+
+  function bugüneGit() {
+    setGridAy(bugun.getMonth() + 1);
+    setGridYil(bugun.getFullYear());
+  }
+
   const aktifFiltre = [filtreLokasyon, filtreRehber, filtreProgram, siralama !== "tarih_asc", sekme === "tumu" && filtreAy].filter(Boolean).length;
   const gruplar = grupla(etkinlikler);
+  const gunlukGruplar = gunlukGrupla(etkinlikler);
+  const bugunAnahtari = gunAnahtari(bugun.toISOString());
+  const gunDetayListe = gunDetayTarih ? (gunlukGruplar[gunDetayTarih] ?? []).map((g) => g.etkinlik) : [];
 
   // ─── Müsaitlik göstergesi ─────────────────────────────────────────────────
   const musaitlikDurumu = (() => {
@@ -302,193 +388,291 @@ export function AcenteTakvim({ referansRehberler }: { referansRehberler: Referan
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <h1 className="text-xl font-semibold flex items-center gap-2" style={{ color: "var(--text-primary)" }}>
           <CalendarDays className="w-5 h-5" style={{ color: "var(--primary)" }} />
           Takvim
         </h1>
         <div className="flex items-center gap-2">
+          <div className="flex gap-1 p-1 rounded-lg" style={{ background: "var(--card-inner-bg, rgba(0,0,0,0.05))" }}>
+            {(["takvim", "liste"] as const).map((g) => (
+              <button
+                key={g}
+                onClick={() => setGorunum(g)}
+                className="text-sm px-3 py-1.5 rounded-md font-medium transition-all"
+                style={{
+                  background: gorunum === g ? "var(--primary)" : "transparent",
+                  color: gorunum === g ? "white" : "var(--text-muted)",
+                }}
+              >
+                {g === "takvim" ? "Takvim" : "Liste"}
+              </button>
+            ))}
+          </div>
+          {gorunum === "liste" && (
+            <button
+              onClick={() => setFiltrePanelAcik((o) => !o)}
+              className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg border transition-colors"
+              style={{
+                color: aktifFiltre > 0 ? "white" : "var(--primary)",
+                borderColor: "var(--primary)",
+                background: aktifFiltre > 0 ? "var(--primary)" : "transparent",
+              }}
+            >
+              <SlidersHorizontal className="w-3.5 h-3.5" />
+              Filtrele
+              {aktifFiltre > 0 && <span className="text-xs bg-white/25 rounded-full px-1.5 py-px">{aktifFiltre}</span>}
+            </button>
+          )}
           <button
-            onClick={() => setFiltrePanelAcik((o) => !o)}
-            className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg border transition-colors"
-            style={{
-              color: aktifFiltre > 0 ? "white" : "var(--primary)",
-              borderColor: "var(--primary)",
-              background: aktifFiltre > 0 ? "var(--primary)" : "transparent",
-            }}
-          >
-            <SlidersHorizontal className="w-3.5 h-3.5" />
-            Filtrele
-            {aktifFiltre > 0 && <span className="text-xs bg-white/25 rounded-full px-1.5 py-px">{aktifFiltre}</span>}
-          </button>
-          <button
-            onClick={() => modalAc()}
+            onClick={() => ekleSecimiAc()}
             className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg text-white transition-colors"
             style={{ background: "var(--primary)" }}
           >
-            <Plus className="w-3.5 h-3.5" /> Etkinlik Ekle
+            <Plus className="w-3.5 h-3.5" /> Tur Ekle
           </button>
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-1 p-1 rounded-xl" style={{ background: "var(--card-inner-bg, rgba(0,0,0,0.05))" }}>
-        {SEKMELER.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => { setSekme(t.id); if (t.id !== "tumu") setFiltreAy(null); }}
-            className="flex-1 text-sm py-1.5 rounded-lg font-medium transition-all"
-            style={{
-              background: sekme === t.id ? "var(--primary)" : "transparent",
-              color: sekme === t.id ? "white" : "var(--text-muted)",
-            }}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Filter Panel */}
-      {filtrePanelAcik && (
-        <div className="rounded-2xl p-4 space-y-4" style={cardStyle}>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>Lokasyon</label>
-              <SehirSecici
-                deger={filtreLokasyon}
-                onChange={setFiltreLokasyon}
-                placeholder="Şehir ara ve filtrele..."
-                inputStyle={innerInputStyle}
-              />
+      {gorunum === "takvim" ? (
+        <div className="space-y-3">
+          {/* Ay navigasyonu */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1">
+              <button onClick={() => ayDegistir(-1)} className="p-1.5 rounded-lg hover:opacity-70" style={{ color: "var(--text-muted)" }}>
+                ‹
+              </button>
+              <span className="text-sm font-semibold min-w-[130px] text-center" style={{ color: "var(--text-primary)" }}>
+                {AYLAR[gridAy - 1]} {gridYil}
+              </span>
+              <button onClick={() => ayDegistir(1)} className="p-1.5 rounded-lg hover:opacity-70" style={{ color: "var(--text-muted)" }}>
+                ›
+              </button>
             </div>
+            <button onClick={bugüneGit} className="text-xs px-3 py-1.5 rounded-lg border"
+              style={{ borderColor: "var(--card-inner-border, rgba(0,0,0,0.1))", color: "var(--text-muted)" }}>
+              Bugün
+            </button>
+          </div>
 
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>Rehber</label>
-              <select value={filtreRehber} onChange={(e) => setFiltreRehber(e.target.value)}
-                className="w-full text-sm rounded-lg px-3 py-2 focus:outline-none" style={innerInputStyle}>
-                <option value="">Tüm rehberler</option>
-                {filtreRehberler.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
-              </select>
-            </div>
-
-            {filtreProgramlar.length > 0 && (
-              <div className="space-y-1.5 sm:col-span-2">
-                <label className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>Program</label>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    onClick={() => setFiltreProgram("")}
-                    className="text-xs px-3 py-1.5 rounded-lg border transition-colors"
-                    style={{
-                      background: !filtreProgram ? "var(--primary)" : "transparent",
-                      color: !filtreProgram ? "white" : "var(--text-muted)",
-                      borderColor: !filtreProgram ? "var(--primary)" : "var(--card-inner-border, rgba(0,0,0,0.1))",
-                    }}
-                  >
-                    Tümü
-                  </button>
-                  {filtreProgramlar.map((prog) => (
-                    <button
-                      key={prog.id}
-                      onClick={() => setFiltreProgram(filtreProgram === prog.id ? "" : prog.id)}
-                      className="text-xs px-3 py-1.5 rounded-lg border transition-colors"
+          {yukleniyor ? (
+            <div className="py-16 text-center text-sm" style={{ color: "var(--text-muted)" }}>Yükleniyor...</div>
+          ) : (
+            <div className="rounded-2xl overflow-hidden" style={cardStyle}>
+              <div className="grid grid-cols-7" style={{ borderBottom: "1px solid var(--card-border)" }}>
+                {["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"].map((g) => (
+                  <div key={g} className="text-center text-xs font-semibold py-2" style={{ color: "var(--text-muted)" }}>{g}</div>
+                ))}
+              </div>
+              <div className="grid grid-cols-7">
+                {(() => {
+                  const ilkGun = new Date(gridYil, gridAy - 1, 1);
+                  const gunSayisi = new Date(gridYil, gridAy, 0).getDate();
+                  const bosBaslangic = (ilkGun.getDay() + 6) % 7;
+                  const toplamHucre = Math.ceil((bosBaslangic + gunSayisi) / 7) * 7;
+                  return Array.from({ length: toplamHucre }, (_, i) => {
+                    const gunNo = i - bosBaslangic + 1;
+                    if (gunNo < 1 || gunNo > gunSayisi) return { key: `bos-${i}`, bos: true as const };
+                    const key = `${gridYil}-${pad2(gridAy)}-${pad2(gunNo)}`;
+                    return { key, bos: false as const, gunNo, liste: gunlukGruplar[key] ?? [] };
+                  }).map((h) => (
+                    <div key={h.key}
+                      onClick={() => !h.bos && setGunDetayTarih(h.key)}
+                      className="min-h-[92px] p-1.5 border-b border-r transition-colors"
                       style={{
-                        background: filtreProgram === prog.id ? "var(--primary)" : "transparent",
-                        color: filtreProgram === prog.id ? "white" : "var(--text-muted)",
-                        borderColor: filtreProgram === prog.id ? "var(--primary)" : "var(--card-inner-border, rgba(0,0,0,0.1))",
+                        borderColor: "var(--card-border)",
+                        cursor: h.bos ? "default" : "pointer",
+                        background: !h.bos && h.key === bugunAnahtari ? "color-mix(in srgb, var(--primary) 6%, transparent)" : undefined,
                       }}
                     >
-                      {prog.ad}
+                      {!h.bos && (
+                        <>
+                          <span className="text-xs font-medium" style={{ color: h.key === bugunAnahtari ? "var(--primary)" : "var(--text-muted)" }}>
+                            {h.gunNo}
+                          </span>
+                          <div className="mt-1 space-y-0.5">
+                            {h.liste.slice(0, 2).map((g, gi) => (
+                              <div key={`${g.etkinlik.id}-${gi}`} className="text-[11px] px-1.5 py-0.5 rounded truncate"
+                                style={{ background: "color-mix(in srgb, var(--primary) 12%, transparent)", color: "var(--primary)" }}>
+                                {g.etkinlik.rehber && <span className="font-semibold">{g.etkinlik.rehber.name.split(" ")[0]} · </span>}
+                                {g.lokasyon}
+                              </div>
+                            ))}
+                            {h.liste.length > 2 && (
+                              <div className="text-[10px] px-1.5" style={{ color: "var(--text-muted)" }}>+{h.liste.length - 2} daha</div>
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  ));
+                })()}
+              </div>
+            </div>
+          )}
+        </div>
+      ) : (
+        <>
+          {/* Tabs */}
+          <div className="flex gap-1 p-1 rounded-xl" style={{ background: "var(--card-inner-bg, rgba(0,0,0,0.05))" }}>
+            {SEKMELER.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => { setSekme(t.id); if (t.id !== "tumu") setFiltreAy(null); }}
+                className="flex-1 text-sm py-1.5 rounded-lg font-medium transition-all"
+                style={{
+                  background: sekme === t.id ? "var(--primary)" : "transparent",
+                  color: sekme === t.id ? "white" : "var(--text-muted)",
+                }}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Filter Panel */}
+          {filtrePanelAcik && (
+            <div className="rounded-2xl p-4 space-y-4" style={cardStyle}>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>Lokasyon</label>
+                  <SehirSecici
+                    deger={filtreLokasyon}
+                    onChange={setFiltreLokasyon}
+                    placeholder="Şehir ara ve filtrele..."
+                    inputStyle={innerInputStyle}
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>Rehber</label>
+                  <select value={filtreRehber} onChange={(e) => setFiltreRehber(e.target.value)}
+                    className="w-full text-sm rounded-lg px-3 py-2 focus:outline-none" style={innerInputStyle}>
+                    <option value="">Tüm rehberler</option>
+                    {filtreRehberler.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+                  </select>
+                </div>
+
+                {filtreProgramlar.length > 0 && (
+                  <div className="space-y-1.5 sm:col-span-2">
+                    <label className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>Program</label>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => setFiltreProgram("")}
+                        className="text-xs px-3 py-1.5 rounded-lg border transition-colors"
+                        style={{
+                          background: !filtreProgram ? "var(--primary)" : "transparent",
+                          color: !filtreProgram ? "white" : "var(--text-muted)",
+                          borderColor: !filtreProgram ? "var(--primary)" : "var(--card-inner-border, rgba(0,0,0,0.1))",
+                        }}
+                      >
+                        Tümü
+                      </button>
+                      {filtreProgramlar.map((prog) => (
+                        <button
+                          key={prog.id}
+                          onClick={() => setFiltreProgram(filtreProgram === prog.id ? "" : prog.id)}
+                          className="text-xs px-3 py-1.5 rounded-lg border transition-colors"
+                          style={{
+                            background: filtreProgram === prog.id ? "var(--primary)" : "transparent",
+                            color: filtreProgram === prog.id ? "white" : "var(--text-muted)",
+                            borderColor: filtreProgram === prog.id ? "var(--primary)" : "var(--card-inner-border, rgba(0,0,0,0.1))",
+                          }}
+                        >
+                          {prog.ad}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {sekme === "tumu" && (
+                  <div className="space-y-1.5 sm:col-span-2">
+                    <label className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>Dönem</label>
+                    <div className="flex gap-2">
+                      <select value={filtreAy ?? ""} onChange={(e) => setFiltreAy(e.target.value ? parseInt(e.target.value) : null)}
+                        className="flex-1 text-sm rounded-lg px-2 py-2 focus:outline-none" style={innerInputStyle}>
+                        <option value="">Tüm aylar</option>
+                        {AYLAR.map((a, i) => <option key={i} value={i + 1}>{a}</option>)}
+                      </select>
+                      <select value={filtreYil} onChange={(e) => setFiltreYil(parseInt(e.target.value))}
+                        className="w-24 text-sm rounded-lg px-2 py-2 focus:outline-none" style={innerInputStyle}>
+                        {[2024, 2025, 2026, 2027].map((y) => <option key={y} value={y}>{y}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>Sıralama</label>
+                <div className="flex gap-2 flex-wrap">
+                  {[
+                    { value: "tarih_asc",    label: "Tarihe göre ↑" },
+                    { value: "tarih_desc",   label: "Tarihe göre ↓" },
+                    { value: "lokasyon_asc", label: "Lokasyona göre A-Z" },
+                  ].map((opt) => (
+                    <button key={opt.value} onClick={() => setSiralama(opt.value)}
+                      className="text-xs px-3 py-1.5 rounded-lg border transition-colors"
+                      style={{
+                        background: siralama === opt.value ? "var(--primary)" : "transparent",
+                        color: siralama === opt.value ? "white" : "var(--text-muted)",
+                        borderColor: siralama === opt.value ? "var(--primary)" : "var(--card-inner-border, rgba(0,0,0,0.1))",
+                      }}
+                    >
+                      {opt.label}
                     </button>
                   ))}
                 </div>
               </div>
-            )}
 
-            {sekme === "tumu" && (
-              <div className="space-y-1.5 sm:col-span-2">
-                <label className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>Dönem</label>
-                <div className="flex gap-2">
-                  <select value={filtreAy ?? ""} onChange={(e) => setFiltreAy(e.target.value ? parseInt(e.target.value) : null)}
-                    className="flex-1 text-sm rounded-lg px-2 py-2 focus:outline-none" style={innerInputStyle}>
-                    <option value="">Tüm aylar</option>
-                    {AYLAR.map((a, i) => <option key={i} value={i + 1}>{a}</option>)}
-                  </select>
-                  <select value={filtreYil} onChange={(e) => setFiltreYil(parseInt(e.target.value))}
-                    className="w-24 text-sm rounded-lg px-2 py-2 focus:outline-none" style={innerInputStyle}>
-                    {[2024, 2025, 2026, 2027].map((y) => <option key={y} value={y}>{y}</option>)}
-                  </select>
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>Sıralama</label>
-            <div className="flex gap-2 flex-wrap">
-              {[
-                { value: "tarih_asc",    label: "Tarihe göre ↑" },
-                { value: "tarih_desc",   label: "Tarihe göre ↓" },
-                { value: "lokasyon_asc", label: "Lokasyona göre A-Z" },
-              ].map((opt) => (
-                <button key={opt.value} onClick={() => setSiralama(opt.value)}
-                  className="text-xs px-3 py-1.5 rounded-lg border transition-colors"
-                  style={{
-                    background: siralama === opt.value ? "var(--primary)" : "transparent",
-                    color: siralama === opt.value ? "white" : "var(--text-muted)",
-                    borderColor: siralama === opt.value ? "var(--primary)" : "var(--card-inner-border, rgba(0,0,0,0.1))",
-                  }}
-                >
-                  {opt.label}
+              <div className="flex justify-end">
+                <button onClick={() => { setFiltreLokasyon(""); setFiltreRehber(""); setFiltreProgram(""); setSiralama("tarih_asc"); setFiltreAy(null); setFiltreYil(new Date().getFullYear()); }}
+                  className="text-xs hover:underline" style={{ color: "var(--text-muted)" }}>
+                  Filtreleri temizle
                 </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="flex justify-end">
-            <button onClick={() => { setFiltreLokasyon(""); setFiltreRehber(""); setFiltreProgram(""); setSiralama("tarih_asc"); setFiltreAy(null); setFiltreYil(new Date().getFullYear()); }}
-              className="text-xs hover:underline" style={{ color: "var(--text-muted)" }}>
-              Filtreleri temizle
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Event List */}
-      {yukleniyor ? (
-        <div className="py-16 text-center text-sm" style={{ color: "var(--text-muted)" }}>Yükleniyor...</div>
-      ) : etkinlikler.length === 0 ? (
-        <div className="py-16 text-center space-y-3">
-          <CalendarDays className="w-10 h-10 mx-auto opacity-25" style={{ color: "var(--text-muted)" }} />
-          <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
-            Bu dönemde etkinlik yok
-          </p>
-          <button onClick={() => modalAc()}
-            className="text-xs px-4 py-2 rounded-lg text-white" style={{ background: "var(--primary)" }}>
-            İlk etkinliği ekle
-          </button>
-        </div>
-      ) : (
-        <div className="space-y-6">
-          {Object.entries(gruplar).map(([key, liste]) => {
-            const [y, m] = key.split("-");
-            return (
-              <div key={key} className="space-y-2">
-                <h3 className="text-xs font-semibold uppercase tracking-widest px-1" style={{ color: "var(--text-muted)" }}>
-                  {AYLAR[parseInt(m) - 1]} {y}
-                </h3>
-                <div className="space-y-2">
-                  {liste.map((e) => (
-                    <EtkinlikKart key={e.id} etkinlik={e}
-                      onDuzenle={() => modalAc(e)}
-                      onSil={() => setSilmeId(e.id)}
-                      onRehberKartAc={rehberKartAc}
-                      onTuristler={() => turistAc(e.id, e.baslik)} />
-                  ))}
-                </div>
               </div>
-            );
-          })}
-        </div>
+            </div>
+          )}
+
+          {/* Event List */}
+          {yukleniyor ? (
+            <div className="py-16 text-center text-sm" style={{ color: "var(--text-muted)" }}>Yükleniyor...</div>
+          ) : etkinlikler.length === 0 ? (
+            <div className="py-16 text-center space-y-3">
+              <CalendarDays className="w-10 h-10 mx-auto opacity-25" style={{ color: "var(--text-muted)" }} />
+              <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
+                Bu dönemde etkinlik yok
+              </p>
+              <button onClick={() => ekleSecimiAc()}
+                className="text-xs px-4 py-2 rounded-lg text-white" style={{ background: "var(--primary)" }}>
+                İlk turu ekle
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {Object.entries(gruplar).map(([key, liste]) => {
+                const [y, m] = key.split("-");
+                return (
+                  <div key={key} className="space-y-2">
+                    <h3 className="text-xs font-semibold uppercase tracking-widest px-1" style={{ color: "var(--text-muted)" }}>
+                      {AYLAR[parseInt(m) - 1]} {y}
+                    </h3>
+                    <div className="space-y-2">
+                      {liste.map((e) => (
+                        <EtkinlikKart key={e.id} etkinlik={e}
+                          onDuzenle={() => modalAc(e)}
+                          onSil={() => setSilmeId(e.id)}
+                          onRehberKartAc={rehberKartAc}
+                          onTuristler={() => turistAc(e.id, e.baslik)} />
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
       )}
 
       {/* ─── Etkinlik Ekle / Düzenle Modal ─────────────────────────────────── */}
@@ -622,162 +806,158 @@ export function AcenteTakvim({ referansRehberler }: { referansRehberler: Referan
         </div>
       )}
 
-      {/* ─── Turist Listesi Modal ─────────────────────────────────────────── */}
-      {turistEtkinlikId && (
+      {/* ─── Gün Detay Modal ────────────────────────────────────────────────── */}
+      {gunDetayTarih && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}>
-          <div className="w-full max-w-5xl rounded-2xl flex flex-col" style={{ ...cardStyle, maxHeight: "90vh" }}>
-            <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: "var(--card-border)" }}>
+          style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }}
+          onClick={(e) => { if (e.target === e.currentTarget) setGunDetayTarih(null); }}>
+          <div className="w-full max-w-xl rounded-2xl p-6 space-y-4 max-h-[85vh] overflow-y-auto" style={cardStyle}>
+            <div className="flex items-center justify-between">
               <div>
-                <h2 className="font-semibold text-base flex items-center gap-2" style={{ color: "var(--text-primary)" }}>
-                  <Users className="w-4 h-4" style={{ color: "var(--primary)" }} />
-                  Turist Listesi
+                <h2 className="font-semibold text-lg" style={{ color: "var(--text-primary)" }}>
+                  {(() => {
+                    const [y, m, d] = gunDetayTarih.split("-").map(Number);
+                    return new Date(y, m - 1, d).toLocaleDateString("tr-TR", { day: "numeric", month: "long", year: "numeric" });
+                  })()}
                 </h2>
-                <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>{turistEtkinlikBaslik}</p>
+                <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
+                  {(() => {
+                    const [y, m, d] = gunDetayTarih.split("-").map(Number);
+                    const gun = new Date(y, m - 1, d).toLocaleDateString("tr-TR", { weekday: "long" });
+                    return gunDetayListe.length === 0 ? gun : `${gun} · ${gunDetayListe.length} tur`;
+                  })()}
+                </p>
               </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setExcelModalAcik(true)}
-                  className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg border"
-                  style={{ borderColor: "var(--card-border)", color: "var(--text-primary)" }}>
-                  <FileSpreadsheet className="w-3.5 h-3.5" /> Excel'den Yükle
-                </button>
-                <button
-                  onClick={() => { setTuristEkleRow(BOSH_TURIST()); setTuristDuzenleId(null); }}
-                  className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg text-white"
-                  style={{ background: "var(--primary)" }}>
-                  <Plus className="w-3.5 h-3.5" /> Turist Ekle
-                </button>
-                <button onClick={() => { setTuristEtkinlikId(null); setTuristEkleRow(null); setTuristDuzenleId(null); }} style={{ color: "var(--text-muted)" }}>
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
+              <button onClick={() => setGunDetayTarih(null)} style={{ color: "var(--text-muted)" }}>
+                <X className="w-5 h-5" />
+              </button>
             </div>
 
-            <div className="flex-1 overflow-auto">
-              {turistYukleniyor ? (
-                <div className="py-16 text-center text-sm" style={{ color: "var(--text-muted)" }}>Yükleniyor...</div>
-              ) : (
-                <table className="w-full text-sm border-collapse">
-                  <thead>
-                    <tr style={{ background: "var(--card-inner-bg, rgba(0,0,0,0.04))" }}>
-                      {["Ad", "Soyad", "Pasaport No", "Uyruk", "Doğum Tarihi", "Telefon", "E-posta", "Notlar", ""].map((h) => (
-                        <th key={h} className="text-left text-xs font-semibold px-3 py-2.5 whitespace-nowrap"
-                          style={{ color: "var(--text-muted)", borderBottom: "1px solid var(--card-border)" }}>
-                          {h}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {turistler.map((t) => {
-                      const duzenle = turistDuzenleId === t.id && turistDuzenleData;
-                      return (
-                        <tr key={t.id} style={{ borderBottom: "1px solid var(--card-border)" }}>
-                          {duzenle ? (
-                            <>
-                              {(["ad", "soyad", "pasaportNo", "uyruk", "dogumTarihi", "telefon", "eposta", "notlar"] as const).map((field) => (
-                                <td key={field} className="px-2 py-1.5">
-                                  <input type="text" value={turistDuzenleData[field] ?? ""}
-                                    onChange={(e) => setTuristDuzenleData((p) => p ? { ...p, [field]: e.target.value || null } : p)}
-                                    className="w-full text-sm rounded px-2 py-1 focus:outline-none min-w-[80px]"
-                                    style={innerInputStyle} />
-                                </td>
-                              ))}
-                              <td className="px-2 py-1.5 whitespace-nowrap">
-                                <div className="flex gap-1">
-                                  <button onClick={turistGuncelle} disabled={turistKaydediyor}
-                                    className="text-xs px-2 py-1 rounded text-white disabled:opacity-50"
-                                    style={{ background: "var(--primary)" }}>Kaydet</button>
-                                  <button onClick={() => { setTuristDuzenleId(null); setTuristDuzenleData(null); }}
-                                    className="text-xs px-2 py-1 rounded border"
-                                    style={{ borderColor: "var(--card-inner-border, rgba(0,0,0,0.1))", color: "var(--text-muted)" }}>İptal</button>
-                                </div>
-                              </td>
-                            </>
-                          ) : (
-                            <>
-                              {[t.ad, t.soyad, t.pasaportNo, t.uyruk, t.dogumTarihi, t.telefon, t.eposta, t.notlar].map((val, i) => (
-                                <td key={i} className="px-3 py-2.5" style={{ color: val ? "var(--text-primary)" : "var(--text-muted)" }}>
-                                  {val ?? <span className="text-xs">—</span>}
-                                </td>
-                              ))}
-                              <td className="px-2 py-2.5 whitespace-nowrap">
-                                <div className="flex gap-1">
-                                  <button onClick={() => { setTuristDuzenleId(t.id); setTuristDuzenleData({ ad: t.ad, soyad: t.soyad, pasaportNo: t.pasaportNo, uyruk: t.uyruk, dogumTarihi: t.dogumTarihi, telefon: t.telefon, eposta: t.eposta, notlar: t.notlar }); setTuristEkleRow(null); }}
-                                    className="p-1 rounded hover:opacity-70" style={{ color: "var(--text-muted)" }}>
-                                    <Pencil className="w-3.5 h-3.5" />
-                                  </button>
-                                  <button onClick={() => turistSil(t.id)} className="p-1 rounded hover:opacity-70 text-red-500">
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
-                                </div>
-                              </td>
-                            </>
-                          )}
-                        </tr>
-                      );
-                    })}
+            {gunDetayListe.length === 0 ? (
+              <div className="py-10 text-center space-y-2">
+                <CalendarDays className="w-9 h-9 mx-auto opacity-25" style={{ color: "var(--text-muted)" }} />
+                <p className="text-sm" style={{ color: "var(--text-muted)" }}>Bu güne ait tur yok.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {gunDetayListe.map((e) => (
+                  <GunDetayKart key={e.id} etkinlik={e} gunAnahtari={gunDetayTarih}
+                    onDuzenle={() => { setGunDetayTarih(null); modalAc(e); }}
+                    onSil={() => setSilmeId(e.id)}
+                    onRehberKartAc={rehberKartAc}
+                    onTuristler={() => turistAc(e.id, e.baslik)} />
+                ))}
+              </div>
+            )}
 
-                    {turistEkleRow && (
-                      <tr style={{ borderBottom: "1px solid var(--card-border)", background: "color-mix(in srgb, var(--primary) 5%, transparent)" }}>
-                        {(["ad", "soyad", "pasaportNo", "uyruk", "dogumTarihi", "telefon", "eposta", "notlar"] as const).map((field, i) => (
-                          <td key={field} className="px-2 py-1.5">
-                            <input type="text" value={turistEkleRow[field] ?? ""}
-                              placeholder={["Ad *", "Soyad *", "Pasaport No", "Uyruk", "Doğum Tarihi", "Telefon", "E-posta", "Notlar"][i]}
-                              onChange={(e) => setTuristEkleRow((p) => p ? { ...p, [field]: e.target.value || null } : p)}
-                              className="w-full text-sm rounded px-2 py-1 focus:outline-none min-w-[80px]"
-                              style={innerInputStyle} />
-                          </td>
-                        ))}
-                        <td className="px-2 py-1.5 whitespace-nowrap">
-                          <div className="flex gap-1">
-                            <button onClick={turistEkle} disabled={turistKaydediyor || !turistEkleRow.ad?.trim() || !turistEkleRow.soyad?.trim()}
-                              className="text-xs px-2 py-1 rounded text-white disabled:opacity-50"
-                              style={{ background: "var(--primary)" }}>Ekle</button>
-                            <button onClick={() => setTuristEkleRow(null)}
-                              className="text-xs px-2 py-1 rounded border"
-                              style={{ borderColor: "var(--card-inner-border, rgba(0,0,0,0.1))", color: "var(--text-muted)" }}>İptal</button>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
+            <button
+              onClick={() => { const t = gunDetayTarih; setGunDetayTarih(null); ekleSecimiAc(t); }}
+              className="w-full flex items-center justify-center gap-1.5 text-sm py-2 rounded-lg border border-dashed"
+              style={{ borderColor: "var(--primary)", color: "var(--primary)" }}
+            >
+              <Plus className="w-3.5 h-3.5" /> Bu güne tur ekle
+            </button>
+          </div>
+        </div>
+      )}
 
-                    {turistler.length === 0 && !turistEkleRow && (
-                      <tr>
-                        <td colSpan={9} className="py-12 text-center text-sm" style={{ color: "var(--text-muted)" }}>
-                          Henüz turist kaydı yok. Turist Ekle butonuna tıkla.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              )}
+      {/* ─── Ekleme Seçici Modal ────────────────────────────────────────────── */}
+      {ekleSecimTarih !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }}
+          onClick={(e) => { if (e.target === e.currentTarget) setEkleSecimTarih(null); }}>
+          <div className="w-full max-w-sm rounded-2xl p-6 space-y-4" style={cardStyle}>
+            <div className="flex items-center justify-between">
+              <h2 className="font-semibold text-base" style={{ color: "var(--text-primary)" }}>Yeni Tur</h2>
+              <button onClick={() => setEkleSecimTarih(null)} style={{ color: "var(--text-muted)" }}>
+                <X className="w-5 h-5" />
+              </button>
             </div>
-
-            <div className="flex items-center justify-between px-6 py-3 border-t" style={{ borderColor: "var(--card-border)" }}>
-              <span className="text-xs" style={{ color: "var(--text-muted)" }}>{turistler.length} turist kayıtlı</span>
-              <button onClick={() => { setTuristEtkinlikId(null); setTuristEkleRow(null); setTuristDuzenleId(null); }}
-                className="text-sm px-4 py-1.5 rounded-lg border"
-                style={{ borderColor: "var(--card-inner-border, rgba(0,0,0,0.1))", color: "var(--text-muted)" }}>
-                Kapat
+            <div className="space-y-2">
+              <button onClick={programdanSec}
+                className="w-full text-left px-4 py-3 rounded-xl border transition-colors hover:opacity-80"
+                style={{ borderColor: "var(--card-inner-border, rgba(0,0,0,0.12))" }}>
+                <p className="font-medium text-sm" style={{ color: "var(--text-primary)" }}>Mevcut Programdan Oluştur</p>
+                <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>Var olan tur programını seç, tarihe işle</p>
+              </button>
+              <button onClick={sifirdanSec}
+                className="w-full text-left px-4 py-3 rounded-xl border transition-colors hover:opacity-80"
+                style={{ borderColor: "var(--card-inner-border, rgba(0,0,0,0.12))" }}>
+                <p className="font-medium text-sm" style={{ color: "var(--text-primary)" }}>Sıfırdan Yeni Etkinlik</p>
+                <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>Programa bağlı olmayan tek seferlik etkinlik</p>
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ─── Excel Yükleme Modal ──────────────────────────────────────────── */}
-      {excelModalAcik && turistEtkinlikId && (
-        <TuristExcelYukle
-          apiUrl={`/api/acente/takvim/${turistEtkinlikId}/turistler`}
-          cardStyle={cardStyle}
-          innerInputStyle={innerInputStyle}
-          onKapat={() => setExcelModalAcik(false)}
-          onTamamla={(eklenenler) => {
-            setTuristler((prev) => [...prev, ...eklenenler]);
-            setExcelModalAcik(false);
-          }}
+      {/* ─── Programdan Oluştur Modal ───────────────────────────────────────── */}
+      {programSecimAcik && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }}
+          onClick={(e) => { if (e.target === e.currentTarget) programSecimKapat(); }}>
+          <div className="w-full max-w-md rounded-2xl p-6 space-y-4" style={cardStyle}>
+            <div className="flex items-center justify-between">
+              <h2 className="font-semibold text-base" style={{ color: "var(--text-primary)" }}>Programdan Oluştur</h2>
+              <button onClick={programSecimKapat} style={{ color: "var(--text-muted)" }}>
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>Program *</label>
+              <select value={programSecimId} onChange={(e) => setProgramSecimId(e.target.value)}
+                className="w-full text-sm rounded-lg px-3 py-2 focus:outline-none" style={innerInputStyle}>
+                <option value="">— Program seçin</option>
+                {programlar.map((p) => (
+                  <option key={p.id} value={p.id}>{p.ad} · {p.sure} gün</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>Başlangıç Tarihi *</label>
+              <input type="date" value={programSecimTarih} onChange={(e) => setProgramSecimTarih(e.target.value)}
+                className="w-full text-sm rounded-lg px-3 py-2 focus:outline-none" style={innerInputStyle} />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>
+                Rehber <span className="font-normal">(isteğe bağlı — tüm segmentlere atanır)</span>
+              </label>
+              <select value={programSecimRehber} onChange={(e) => setProgramSecimRehber(e.target.value)}
+                className="w-full text-sm rounded-lg px-3 py-2 focus:outline-none" style={innerInputStyle}>
+                <option value="">— Rehber seçin</option>
+                {referansRehberler.map((r) => (
+                  <option key={r.id} value={r.id}>{r.name}{r.city ? ` — ${r.city}` : ""}</option>
+                ))}
+              </select>
+            </div>
+
+            {programHata && <p className="text-xs text-red-500">{programHata}</p>}
+
+            <div className="flex gap-2">
+              <button onClick={programSecimKapat}
+                className="flex-1 text-sm py-2 rounded-lg border"
+                style={{ borderColor: "var(--card-inner-border, rgba(0,0,0,0.1))", color: "var(--text-muted)" }}>
+                İptal
+              </button>
+              <button onClick={programdanOlustur} disabled={programIsleniyor}
+                className="flex-1 text-sm py-2 rounded-lg text-white font-medium disabled:opacity-50"
+                style={{ background: "var(--primary)" }}>
+                {programIsleniyor ? "İşleniyor..." : "Takvime İşle"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Turist Listesi Modal ─────────────────────────────────────────── */}
+      {turistEtkinlikId && (
+        <TuristListesiModal
+          etkinlikId={turistEtkinlikId}
+          baslik={turistEtkinlikBaslik}
+          onKapat={() => setTuristEtkinlikId(null)}
         />
       )}
 
@@ -907,9 +1087,13 @@ function EtkinlikKart({ etkinlik: e, onDuzenle, onSil, onRehberKartAc, onTuristl
         <p className="font-medium text-sm" style={{ color: "var(--text-primary)" }}>{e.baslik}</p>
         <div className="flex flex-wrap items-center gap-3 mt-1.5">
           {e.program && (
-            <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: "color-mix(in srgb, var(--primary) 12%, transparent)", color: "var(--primary)" }}>
+            <Link href="/dashboard/acente/programlar"
+              onClick={(ev) => ev.stopPropagation()}
+              title="Programa git"
+              className="text-xs px-2 py-0.5 rounded-full font-medium hover:opacity-80 transition-opacity"
+              style={{ background: "color-mix(in srgb, var(--primary) 12%, transparent)", color: "var(--primary)" }}>
               {e.program.ad}
-            </span>
+            </Link>
           )}
           {e.lokasyon && (
             <span className="text-xs flex items-center gap-1" style={{ color: "var(--text-muted)" }}>
@@ -981,6 +1165,158 @@ function EtkinlikKart({ etkinlik: e, onDuzenle, onSil, onRehberKartAc, onTuristl
         <button onClick={onSil} className="p-1.5 rounded-lg transition-colors hover:opacity-70 text-red-500">
           <Trash2 className="w-3.5 h-3.5" />
         </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Gün Detay Kartı (zenginleştirilmiş, tek günü odağa alan görünüm) ──────────
+function GunDetayKart({ etkinlik: e, gunAnahtari: seciliGunStr, onDuzenle, onSil, onRehberKartAc, onTuristler }: {
+  etkinlik: Etkinlik;
+  gunAnahtari: string;
+  onDuzenle: () => void;
+  onSil: () => void;
+  onRehberKartAc?: (id: string) => void;
+  onTuristler?: () => void;
+}) {
+  const baslangic = new Date(e.baslangic);
+  const bitis = e.bitis ? new Date(e.bitis) : baslangic;
+  const baslangicGun = new Date(baslangic.getFullYear(), baslangic.getMonth(), baslangic.getDate());
+  const bitisGun = new Date(bitis.getFullYear(), bitis.getMonth(), bitis.getDate());
+  const toplamGun = Math.round((bitisGun.getTime() - baslangicGun.getTime()) / 86400000) + 1;
+
+  const [sy, sm, sd] = seciliGunStr.split("-").map(Number);
+  const seciliGun = new Date(sy, sm - 1, sd);
+  const gunNo = Math.round((seciliGun.getTime() - baslangicGun.getTime()) / 86400000) + 1;
+
+  const segmentler = e.program?.segmentler ? normalizeSegmentler(e.program.segmentler) : [];
+  const bugunLokasyon = segmentler.length > 0 ? segmentIcinLokasyon(segmentler, gunNo - 1) : null;
+
+  const yanit = e.rehberYanit;
+  const { dot, bg, text, label } =
+    yanit === "KABUL" ? { dot: "#22c55e", bg: "rgba(34,197,94,0.12)", text: "#16a34a", label: "Kabul edildi" } :
+    yanit === "RED" ? { dot: "#ef4444", bg: "rgba(239,68,68,0.12)", text: "#dc2626", label: "Reddedildi" } :
+    yanit === "BEKLIYOR" ? { dot: "#f59e0b", bg: "rgba(245,158,11,0.12)", text: "#d97706", label: "Yanıt bekleniyor" } :
+    { dot: "#818cf8", bg: "rgba(99,102,241,0.12)", text: "#6366f1", label: null };
+
+  let offset = 0;
+  const guzergah = segmentler.map((seg, i) => {
+    const segBas = new Date(baslangicGun); segBas.setDate(segBas.getDate() + offset);
+    const aktif = gunNo - 1 >= offset && gunNo - 1 < offset + seg.gun;
+    offset += seg.gun;
+    return { key: i, lokasyon: seg.lokasyonlar.join(", "), bas: segBas, aktif };
+  });
+
+  return (
+    <div className="rounded-2xl overflow-hidden" style={{ border: "1px solid var(--card-border)" }}>
+      <div className="h-1.5" style={{ background: dot }} />
+      <div className="p-4 space-y-3" style={{ background: "var(--card-bg)" }}>
+        {/* Başlık + aksiyonlar */}
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            {e.program ? (
+              <Link href="/dashboard/acente/programlar" onClick={(ev) => ev.stopPropagation()}
+                className="font-semibold text-base hover:underline" style={{ color: "var(--text-primary)" }}>
+                {e.program.ad}
+              </Link>
+            ) : (
+              <p className="font-semibold text-base" style={{ color: "var(--text-primary)" }}>{e.baslik}</p>
+            )}
+            <div className="flex items-center flex-wrap gap-1.5 mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
+              <span className="flex items-center gap-1">
+                <CalendarDays className="w-3.5 h-3.5" />
+                {baslangic.toLocaleDateString("tr-TR", { day: "numeric", month: "short" })}
+                {e.bitis && ` – ${bitis.toLocaleDateString("tr-TR", { day: "numeric", month: "short" })}`}
+              </span>
+              {toplamGun > 1 && (
+                <span className="px-1.5 py-0.5 rounded-full font-medium" style={{ background: "var(--card-inner-bg, rgba(0,0,0,0.06))" }}>
+                  {gunNo}. gün / {toplamGun}
+                </span>
+              )}
+            </div>
+          </div>
+          <div className="flex gap-1 shrink-0">
+            <button onClick={onDuzenle} className="p-1.5 rounded-lg hover:opacity-70 transition-opacity"
+              style={{ color: "var(--text-muted)", background: "var(--card-inner-bg, rgba(0,0,0,0.05))" }}>
+              <Pencil className="w-3.5 h-3.5" />
+            </button>
+            <button onClick={onSil} className="p-1.5 rounded-lg hover:opacity-70 transition-opacity text-red-500"
+              style={{ background: "rgba(239,68,68,0.08)" }}>
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Bugünün lokasyonu */}
+        {(bugunLokasyon || e.lokasyon) && (
+          <div className="flex items-center gap-2.5 px-3 py-2 rounded-xl" style={{ background: "color-mix(in srgb, var(--primary) 8%, transparent)" }}>
+            <MapPin className="w-4 h-4 shrink-0" style={{ color: "var(--primary)" }} />
+            <div className="min-w-0">
+              <p className="text-[11px] font-medium leading-none" style={{ color: "var(--text-muted)" }}>Bugün</p>
+              <p className="text-sm font-semibold truncate mt-0.5" style={{ color: "var(--primary)" }}>{bugunLokasyon ?? e.lokasyon}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Rehber + durum */}
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          {e.rehber ? (
+            <button type="button" onClick={() => onRehberKartAc?.(e.rehber!.id)} className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+              <div className="w-7 h-7 rounded-full overflow-hidden shrink-0 flex items-center justify-center text-xs font-semibold text-white" style={{ background: "var(--primary)" }}>
+                {e.rehber.photoUrl ? <img src={e.rehber.photoUrl} alt="" className="w-full h-full object-cover" /> : e.rehber.name[0]}
+              </div>
+              <span className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>{e.rehber.name}</span>
+            </button>
+          ) : (
+            <span className="text-xs" style={{ color: "var(--text-muted)" }}>Rehber atanmadı</span>
+          )}
+          <div className="flex items-center gap-2">
+            {label && (
+              <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: bg, color: text }}>{label}</span>
+            )}
+            {yanit === "RED" && (
+              <a
+                href={`/dashboard/acente/rehber-bul?${new URLSearchParams({
+                  ...(e.lokasyon ? { lokasyonlar: e.lokasyon } : {}),
+                  baslangic: e.baslangic.split("T")[0],
+                  ...(e.bitis ? { bitis: e.bitis.split("T")[0] } : {}),
+                }).toString()}`}
+                className="text-xs px-2 py-0.5 rounded-full flex items-center gap-1 font-medium"
+                style={{ background: "color-mix(in srgb, var(--primary) 12%, transparent)", color: "var(--primary)" }}
+              >
+                <Search className="w-3 h-3" /> Rehber Ara
+              </a>
+            )}
+          </div>
+        </div>
+
+        {/* Güzergah */}
+        {guzergah.length > 1 && (
+          <div className="pt-2 border-t space-y-1" style={{ borderColor: "var(--card-border)" }}>
+            <p className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>Güzergah</p>
+            {guzergah.map((g) => (
+              <div key={g.key} className="flex items-center gap-2 text-xs py-0.5"
+                style={{ color: g.aktif ? "var(--primary)" : "var(--text-muted)", fontWeight: g.aktif ? 600 : 400 }}>
+                <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: g.aktif ? "var(--primary)" : "var(--card-inner-border, rgba(0,0,0,0.18))" }} />
+                <span className="flex-1 truncate">{g.lokasyon}</span>
+                <span className="shrink-0">{g.bas.toLocaleDateString("tr-TR", { day: "numeric", month: "short" })}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {e.notlar && !e.program && (
+          <p className="text-xs" style={{ color: "var(--text-muted)" }}>{e.notlar}</p>
+        )}
+
+        {onTuristler && (
+          <button onClick={onTuristler}
+            className="w-full flex items-center justify-center gap-1.5 text-sm font-medium py-2 rounded-xl transition-opacity hover:opacity-90"
+            style={{ background: "var(--primary)", color: "white" }}>
+            <Users className="w-4 h-4" />
+            Turist Listesi{typeof e._count?.turistler === "number" ? ` · ${e._count.turistler}` : ""}
+          </button>
+        )}
       </div>
     </div>
   );

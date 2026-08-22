@@ -54,6 +54,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         bitis: etkinlik.bitis,
         notlar: etkinlikNotlar,
         tur: "REZERVASYON",
+        acenteEtkinlikId: etkinlik.id,
       },
     });
 

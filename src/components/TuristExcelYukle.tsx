@@ -55,13 +55,21 @@ type SatirVeri = {
   _hata?: string;
 };
 
+function hucreDegeri(v: unknown): string {
+  if (v instanceof Date) {
+    const g = (n: number) => String(n).padStart(2, "0");
+    return `${g(v.getDate())}.${g(v.getMonth() + 1)}.${v.getFullYear()}`;
+  }
+  return String(v ?? "").trim();
+}
+
 function parseExcel(dosya: File): Promise<SatirVeri[]> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
         const veri = new Uint8Array(e.target!.result as ArrayBuffer);
-        const wb = XLSX.read(veri, { type: "array" });
+        const wb = XLSX.read(veri, { type: "array", cellDates: true });
         const ws = wb.Sheets[wb.SheetNames[0]];
         const satirlar: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
         if (satirlar.length < 2) { resolve([]); return; }
@@ -97,7 +105,7 @@ function parseExcel(dosya: File): Promise<SatirVeri[]> {
           const ekAlanlar: Record<string, string> = {};
 
           Object.entries(eslestirme).forEach(([idx, alan]) => {
-            const val = String(satir[Number(idx)] ?? "").trim();
+            const val = hucreDegeri(satir[Number(idx)]);
             if (!val) return;
             if (alan === "adSoyad") {
               // "Ad Soyad" tek sütunu: ilk kelime ad, geri kalan soyad
@@ -114,7 +122,7 @@ function parseExcel(dosya: File): Promise<SatirVeri[]> {
           });
 
           Object.entries(ekBasliklar).forEach(([idx, baslik]) => {
-            const val = String(satir[Number(idx)] ?? "").trim();
+            const val = hucreDegeri(satir[Number(idx)]);
             if (val) ekAlanlar[baslik] = val;
           });
 

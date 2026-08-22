@@ -10,10 +10,12 @@ import { HesapAyarlari } from "@/components/HesapAyarlari";
 export default async function AcenteProfilPage({
   searchParams,
 }: {
-  searchParams: { yeni?: string };
+  searchParams: Promise<{ yeni?: string }>;
 }) {
   const session = await getServerSession(authOptions);
   if (!session || session.user.role !== "ACENTE") redirect("/dashboard");
+
+  const { yeni } = await searchParams;
 
   const profile = await prisma.acenteProfile.findUnique({
     where: { userId: session.user.id },
@@ -29,7 +31,7 @@ export default async function AcenteProfilPage({
 
   if (!profile) redirect("/dashboard");
 
-  const isYeni = searchParams.yeni === "1" || !profile.description;
+  const isYeni = yeni === "1" || !profile.description;
 
   return (
     <div className="max-w-2xl space-y-6">

@@ -66,8 +66,8 @@ export async function POST(req: NextRequest) {
     baslik: "Yeni mesaj aldınız",
     metin: content.trim().slice(0, 80),
     link: gondericRol === "REHBER"
-      ? "/dashboard/acente/mesajlar"
-      : "/dashboard/rehber/mesajlar",
+      ? `/dashboard/acente/mesajlar?ile=${session.user.id}`
+      : `/dashboard/rehber/mesajlar?ile=${session.user.id}`,
   }).catch(() => {});
 
   return NextResponse.json(mesaj, { status: 201 });

@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic";
 
+import { Suspense } from "react";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { redirect } from "next/navigation";
@@ -21,5 +22,9 @@ export default async function AcenteTakvimPage() {
       }).then((r) => r.map((ref) => ref.rehber))
     : [];
 
-  return <AcenteTakvim referansRehberler={referansRehberler} />;
+  return (
+    <Suspense>
+      <AcenteTakvim referansRehberler={referansRehberler} />
+    </Suspense>
+  );
 }

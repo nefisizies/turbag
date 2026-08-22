@@ -51,7 +51,7 @@ export function IlanRehberBul({ ilan }: { ilan: Ilan }) {
   const [hata, setHata] = useState("");
   const [davetModal, setDavetModal] = useState<Rehber | null>(null);
   const [davetYukleniyor, setDavetYukleniyor] = useState(false);
-  const [davetTamamlandi, setDavetTamamlandi] = useState<Set<string>>(new Set());
+  const [davetTamamlandi, setDavetTamamlandi] = useState<Record<string, string>>({});
   const [davetNot, setDavetNot] = useState("");
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -100,7 +100,7 @@ export function IlanRehberBul({ ilan }: { ilan: Ilan }) {
         }),
       });
       if (res.ok) {
-        setDavetTamamlandi(prev => new Set([...prev, davetModal.id]));
+        setDavetTamamlandi(prev => ({ ...prev, [davetModal.id]: baslangic }));
         setDavetModal(null);
         setDavetNot("");
       }
@@ -199,7 +199,7 @@ export function IlanRehberBul({ ilan }: { ilan: Ilan }) {
               <span className="font-semibold" style={{ color: "var(--upe-ink)" }}>{rehberler.length}</span> müsait rehber
             </p>
             {rehberler.map(r => {
-              const davetEdildi = davetTamamlandi.has(r.id);
+              const davetEdildiTarih = davetTamamlandi[r.id];
               return (
                 <div key={r.id} className="rounded-2xl p-4 flex items-center gap-4"
                   style={{ background: "var(--card-bg)", border: "1px solid var(--border-1)" }}>
@@ -241,11 +241,12 @@ export function IlanRehberBul({ ilan }: { ilan: Ilan }) {
                   </div>
 
                   {/* Davet butonu */}
-                  {davetEdildi ? (
-                    <div className="flex items-center gap-1.5 text-xs font-medium shrink-0 px-3 py-1.5 rounded-xl"
+                  {davetEdildiTarih ? (
+                    <Link href={`/dashboard/acente/takvim?gun=${davetEdildiTarih}`}
+                      className="flex items-center gap-1.5 text-xs font-medium shrink-0 px-3 py-1.5 rounded-xl hover:opacity-80 transition-opacity"
                       style={{ color: "#10b981", background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.2)" }}>
                       <CheckCircle className="w-3.5 h-3.5" /> Davet Gönderildi
-                    </div>
+                    </Link>
                   ) : (
                     <button onClick={() => setDavetModal(r)}
                       className="shrink-0 px-4 py-2 rounded-xl text-sm font-semibold hover:opacity-90 transition-opacity"

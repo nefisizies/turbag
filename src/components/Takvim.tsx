@@ -84,8 +84,10 @@ export function Takvim({ initialTarih }: { initialTarih: string | null }) {
   const etkinlikleriYukle = useCallback(async () => {
     setYukleniyor(true);
     const res = await fetch(`/api/takvim?yil=${yil}&ay=${ay}`);
-    setEtkinlikler(await res.json());
+    const data: Etkinlik[] = await res.json();
+    setEtkinlikler(data);
     setYukleniyor(false);
+    return data;
   }, [yil, ay]);
 
   const yilIstatistikYukle = useCallback(async () => {
@@ -94,8 +96,13 @@ export function Takvim({ initialTarih }: { initialTarih: string | null }) {
   }, [yil]);
 
   useEffect(() => {
-    etkinlikleriYukle().then(() => {
-      if (initialTarih && !modalAcildi.current) { modalAcildi.current = true; modalAc(initialTarih); }
+    etkinlikleriYukle().then((yuklenen) => {
+      if (initialTarih && !modalAcildi.current) {
+        modalAcildi.current = true;
+        const mevcut = (yuklenen ?? []).find((e) => toDateStr(new Date(e.baslangic)) === initialTarih);
+        if (mevcut) duzenleAc(mevcut);
+        else modalAc(initialTarih);
+      }
     });
   }, [etkinlikleriYukle]); // eslint-disable-line react-hooks/exhaustive-deps
 

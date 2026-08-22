@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Plus, X, Pencil, Trash2, MapPin, Clock, Play, ChevronDown, ChevronUp, Check, Users, FileSpreadsheet } from "lucide-react";
+import Link from "next/link";
+import { Plus, X, Pencil, Trash2, MapPin, Clock, Play, ChevronDown, ChevronUp, Check, Users, CalendarDays } from "lucide-react";
 import { sortSehirlerByProximity } from "@/lib/sehirler";
-import { TuristExcelYukle } from "./TuristExcelYukle";
+import { TuristListesiModal } from "./TuristListesiModal";
 
 type Segment = { lokasyonlar: string[]; gun: number };
 
@@ -24,22 +25,12 @@ type Program = {
   etkinlikler: AktifEtkinlik[];
 };
 
-type Turist = {
+type ProgramEtkinlik = {
   id: string;
-  ad: string;
-  soyad: string;
-  pasaportNo: string | null;
-  uyruk: string | null;
-  dogumTarihi: string | null;
-  telefon: string | null;
-  eposta: string | null;
-  notlar: string | null;
+  baslangic: string;
+  bitis: string | null;
+  rehber: { name: string } | null;
 };
-
-const BOSH_TURIST = (): Omit<Turist, "id"> => ({
-  ad: "", soyad: "", pasaportNo: null, uyruk: null,
-  dogumTarihi: null, telefon: null, eposta: null, notlar: null,
-});
 
 function normalizeSegment(s: any): Segment {
   if (Array.isArray(s.lokasyonlar)) return s as Segment;
@@ -84,18 +75,11 @@ export function AcenteProgramlar({ referansRehberler }: { referansRehberler: Reh
   // Detay açık/kapalı
   const [acikId, setAcikId] = useState<string | null>(null);
 
-  // Turist modal
-  const [turistModalProgram, setTuristModalProgram] = useState<Program | null>(null);
-  const [turistler, setTuristler] = useState<Turist[]>([]);
-  const [turistYukleniyor, setTuristYukleniyor] = useState(false);
-  const [turistEkleRow, setTuristEkleRow] = useState<Omit<Turist, "id"> | null>(null);
-  const [turistKaydediyor, setTuristKaydediyor] = useState(false);
-  const [turistDuzenleId, setTuristDuzenleId] = useState<string | null>(null);
-  const [turistDuzenleData, setTuristDuzenleData] = useState<Omit<Turist, "id"> | null>(null);
-  const [turistOneri, setTuristOneri] = useState<Omit<Turist, "id">[]>([]);
-  const [turistOneriGoster, setTuristOneriGoster] = useState(false);
-  const turistOneriRef = useRef<HTMLDivElement>(null);
-  const [excelModalAcik, setExcelModalAcik] = useState(false);
+  // Turist: etkinlik seçici + liste modal
+  const [etkinlikSecimProgram, setEtkinlikSecimProgram] = useState<Program | null>(null);
+  const [programEtkinlikleri, setProgramEtkinlikleri] = useState<ProgramEtkinlik[]>([]);
+  const [etkinliklerYukleniyor, setEtkinliklerYukleniyor] = useState(false);
+  const [turistEtkinlik, setTuristEtkinlik] = useState<{ id: string; baslik: string } | null>(null);
 
   async function yukle() {
     setYukleniyor(true);
@@ -109,16 +93,6 @@ export function AcenteProgramlar({ referansRehberler }: { referansRehberler: Reh
   }
 
   useEffect(() => { yukle(); }, []);
-
-  useEffect(() => {
-    function handle(e: MouseEvent) {
-      if (turistOneriRef.current && !turistOneriRef.current.contains(e.target as Node)) {
-        setTuristOneriGoster(false);
-      }
-    }
-    document.addEventListener("mousedown", handle);
-    return () => document.removeEventListener("mousedown", handle);
-  }, []);
 
   function modalAc(p?: Program) {
     if (p) {
@@ -216,68 +190,21 @@ export function AcenteProgramlar({ referansRehberler }: { referansRehberler: Reh
   }
 
   async function turistAc(p: Program) {
-    setTuristModalProgram(p);
-    setTuristYukleniyor(true);
-    setTuristEkleRow(null);
-    setTuristDuzenleId(null);
-    const res = await fetch(`/api/acente/programlar/${p.id}/turistler`);
+    setEtkinlikSecimProgram(p);
+    setEtkinliklerYukleniyor(true);
+    const res = await fetch(`/api/acente/programlar/${p.id}/etkinlikler`);
     const data = await res.json();
-    setTuristler(Array.isArray(data) ? data : []);
-    setTuristYukleniyor(false);
+    setProgramEtkinlikleri(Array.isArray(data) ? data : []);
+    setEtkinliklerYukleniyor(false);
   }
 
-  async function turistAdAra(q: string) {
-    if (q.length < 2) { setTuristOneri([]); setTuristOneriGoster(false); return; }
-    const res = await fetch(`/api/acente/turistler/ara?q=${encodeURIComponent(q)}`);
-    const data = await res.json();
-    setTuristOneri(Array.isArray(data) ? data : []);
-    setTuristOneriGoster(Array.isArray(data) && data.length > 0);
-  }
-
-  function turistOneriSec(t: Omit<Turist, "id">) {
-    setTuristEkleRow({ ad: t.ad, soyad: t.soyad, pasaportNo: t.pasaportNo, uyruk: t.uyruk, dogumTarihi: t.dogumTarihi, telefon: t.telefon, eposta: t.eposta, notlar: t.notlar });
-    setTuristOneriGoster(false);
-    setTuristOneri([]);
-  }
-
-  async function turistEkle() {
-    if (!turistEkleRow || !turistModalProgram) return;
-    if (!turistEkleRow.ad.trim() || !turistEkleRow.soyad.trim()) return;
-    setTuristKaydediyor(true);
-    const res = await fetch(`/api/acente/programlar/${turistModalProgram.id}/turistler`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(turistEkleRow),
-    });
-    if (res.ok) {
-      const yeni = await res.json();
-      setTuristler((prev) => [...prev, yeni]);
-      setTuristEkleRow(null);
-    }
-    setTuristKaydediyor(false);
-  }
-
-  async function turistGuncelle() {
-    if (!turistDuzenleId || !turistDuzenleData || !turistModalProgram) return;
-    setTuristKaydediyor(true);
-    const res = await fetch(`/api/acente/programlar/${turistModalProgram.id}/turistler/${turistDuzenleId}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(turistDuzenleData),
-    });
-    if (res.ok) {
-      const guncellendi = await res.json();
-      setTuristler((prev) => prev.map((t) => t.id === turistDuzenleId ? guncellendi : t));
-      setTuristDuzenleId(null);
-      setTuristDuzenleData(null);
-    }
-    setTuristKaydediyor(false);
-  }
-
-  async function turistSil(turistId: string) {
-    if (!turistModalProgram) return;
-    await fetch(`/api/acente/programlar/${turistModalProgram.id}/turistler/${turistId}`, { method: "DELETE" });
-    setTuristler((prev) => prev.filter((t) => t.id !== turistId));
+  function etkinlikSec(e: ProgramEtkinlik) {
+    const bas = new Date(e.baslangic).toLocaleDateString("tr-TR", { day: "numeric", month: "short" });
+    const bit = e.bitis ? new Date(e.bitis).toLocaleDateString("tr-TR", { day: "numeric", month: "short" }) : null;
+    const tarih = bit ? `${bas} – ${bit}` : bas;
+    const baslik = `${etkinlikSecimProgram?.ad ?? ""} · ${tarih}${e.rehber ? ` · ${e.rehber.name}` : ""}`;
+    setTuristEtkinlik({ id: e.id, baslik });
+    setEtkinlikSecimProgram(null);
   }
 
   function takvimeAc(id: string) {
@@ -675,249 +602,73 @@ export function AcenteProgramlar({ referansRehberler }: { referansRehberler: Reh
         </div>
       )}
 
-      {/* ─── Turist Listesi Modal ─────────────────────────────────────────── */}
-      {turistModalProgram && (
+      {/* ─── Etkinlik Seçici Modal ──────────────────────────────────────────── */}
+      {etkinlikSecimProgram && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
           style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}
+          onClick={(e) => { if (e.target === e.currentTarget) setEtkinlikSecimProgram(null); }}
         >
-          <div className="w-full max-w-5xl rounded-2xl flex flex-col" style={{ ...cardStyle, maxHeight: "90vh" }}>
-            {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: "var(--card-border)" }}>
+          <div className="w-full max-w-md rounded-2xl p-6 space-y-4" style={cardStyle}>
+            <div className="flex items-center justify-between">
               <div>
-                <h2 className="font-semibold text-base flex items-center gap-2" style={{ color: "var(--text-primary)" }}>
-                  <Users className="w-4 h-4" style={{ color: "var(--primary)" }} />
-                  Turist Listesi
-                </h2>
-                <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>{turistModalProgram.ad}</p>
+                <h2 className="font-semibold text-base" style={{ color: "var(--text-primary)" }}>Hangi tarihe eklensin?</h2>
+                <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>{etkinlikSecimProgram.ad}</p>
               </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setExcelModalAcik(true)}
-                  className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg border"
-                  style={{ borderColor: "var(--card-border)", color: "var(--text-primary)" }}
-                >
-                  <FileSpreadsheet className="w-3.5 h-3.5" /> Excel'den Yükle
-                </button>
-                <button
-                  onClick={() => { setTuristEkleRow(BOSH_TURIST()); setTuristDuzenleId(null); }}
-                  className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg text-white"
-                  style={{ background: "var(--primary)" }}
-                >
-                  <Plus className="w-3.5 h-3.5" /> Turist Ekle
-                </button>
-                <button onClick={() => setTuristModalProgram(null)} style={{ color: "var(--text-muted)" }}>
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-
-            {/* Tablo */}
-            <div className="flex-1 overflow-auto">
-              {turistYukleniyor ? (
-                <div className="py-16 text-center text-sm" style={{ color: "var(--text-muted)" }}>Yükleniyor...</div>
-              ) : (
-                <table className="w-full text-sm border-collapse">
-                  <thead>
-                    <tr style={{ background: "var(--card-inner-bg, rgba(0,0,0,0.04))" }}>
-                      {["Ad", "Soyad", "Pasaport No", "Uyruk", "Doğum Tarihi", "Telefon", "E-posta", "Notlar", ""].map((h) => (
-                        <th
-                          key={h}
-                          className="text-left text-xs font-semibold px-3 py-2.5 whitespace-nowrap"
-                          style={{ color: "var(--text-muted)", borderBottom: "1px solid var(--card-border)" }}
-                        >
-                          {h}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {turistler.map((t) => {
-                      const duzenle = turistDuzenleId === t.id && turistDuzenleData;
-                      return (
-                        <tr
-                          key={t.id}
-                          style={{ borderBottom: "1px solid var(--card-border)" }}
-                          className="hover:opacity-90 transition-opacity"
-                        >
-                          {duzenle ? (
-                            <>
-                              {(["ad", "soyad", "pasaportNo", "uyruk", "dogumTarihi", "telefon", "eposta", "notlar"] as const).map((field) => (
-                                <td key={field} className="px-2 py-1.5">
-                                  <input
-                                    type="text"
-                                    value={turistDuzenleData[field] ?? ""}
-                                    onChange={(e) => setTuristDuzenleData((prev) => prev ? { ...prev, [field]: e.target.value || null } : prev)}
-                                    className="w-full text-sm rounded px-2 py-1 focus:outline-none min-w-[80px]"
-                                    style={innerInputStyle}
-                                  />
-                                </td>
-                              ))}
-                              <td className="px-2 py-1.5 whitespace-nowrap">
-                                <div className="flex gap-1">
-                                  <button
-                                    onClick={turistGuncelle}
-                                    disabled={turistKaydediyor}
-                                    className="text-xs px-2 py-1 rounded text-white disabled:opacity-50"
-                                    style={{ background: "var(--primary)" }}
-                                  >
-                                    Kaydet
-                                  </button>
-                                  <button
-                                    onClick={() => { setTuristDuzenleId(null); setTuristDuzenleData(null); }}
-                                    className="text-xs px-2 py-1 rounded border"
-                                    style={{ borderColor: "var(--card-inner-border, rgba(0,0,0,0.1))", color: "var(--text-muted)" }}
-                                  >
-                                    İptal
-                                  </button>
-                                </div>
-                              </td>
-                            </>
-                          ) : (
-                            <>
-                              {[t.ad, t.soyad, t.pasaportNo, t.uyruk, t.dogumTarihi, t.telefon, t.eposta, t.notlar].map((val, i) => (
-                                <td key={i} className="px-3 py-2.5" style={{ color: val ? "var(--text-primary)" : "var(--text-muted)" }}>
-                                  {val ?? <span className="text-xs">—</span>}
-                                </td>
-                              ))}
-                              <td className="px-2 py-2.5 whitespace-nowrap">
-                                <div className="flex gap-1">
-                                  <button
-                                    onClick={() => { setTuristDuzenleId(t.id); setTuristDuzenleData({ ad: t.ad, soyad: t.soyad, pasaportNo: t.pasaportNo, uyruk: t.uyruk, dogumTarihi: t.dogumTarihi, telefon: t.telefon, eposta: t.eposta, notlar: t.notlar }); setTuristEkleRow(null); }}
-                                    className="p-1 rounded hover:opacity-70"
-                                    style={{ color: "var(--text-muted)" }}
-                                  >
-                                    <Pencil className="w-3.5 h-3.5" />
-                                  </button>
-                                  <button
-                                    onClick={() => turistSil(t.id)}
-                                    className="p-1 rounded hover:opacity-70 text-red-500"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
-                                </div>
-                              </td>
-                            </>
-                          )}
-                        </tr>
-                      );
-                    })}
-
-                    {/* Yeni satır ekleme */}
-                    {turistEkleRow && (
-                      <tr style={{ borderBottom: "1px solid var(--card-border)", background: "color-mix(in srgb, var(--primary) 5%, transparent)" }}>
-                        {(["ad", "soyad", "pasaportNo", "uyruk", "dogumTarihi", "telefon", "eposta", "notlar"] as const).map((field, i) => (
-                          <td key={field} className="px-2 py-1.5">
-                            {field === "ad" ? (
-                              <div className="relative" ref={turistOneriRef}>
-                                <input
-                                  type="text"
-                                  value={turistEkleRow.ad ?? ""}
-                                  placeholder="Ad *"
-                                  onChange={(e) => {
-                                    const val = e.target.value;
-                                    setTuristEkleRow((prev) => prev ? { ...prev, ad: val } : prev);
-                                    turistAdAra(val);
-                                  }}
-                                  onFocus={() => turistOneri.length > 0 && setTuristOneriGoster(true)}
-                                  className="w-full text-sm rounded px-2 py-1 focus:outline-none min-w-[80px]"
-                                  style={innerInputStyle}
-                                />
-                                {turistOneriGoster && (
-                                  <div
-                                    className="absolute left-0 top-full mt-1 z-50 rounded-lg shadow-lg py-1 min-w-[220px]"
-                                    style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}
-                                  >
-                                    <p className="text-xs px-3 py-1 font-medium" style={{ color: "var(--text-muted)" }}>Kayıtlı Turistler</p>
-                                    {turistOneri.map((t, idx) => (
-                                      <button
-                                        key={idx}
-                                        type="button"
-                                        onMouseDown={() => turistOneriSec(t)}
-                                        className="w-full text-left px-3 py-1.5 text-sm hover:opacity-80 transition-opacity"
-                                        style={{ color: "var(--text-primary)" }}
-                                      >
-                                        {t.ad} {t.soyad}
-                                        {t.pasaportNo && <span className="text-xs ml-1.5" style={{ color: "var(--text-muted)" }}>{t.pasaportNo}</span>}
-                                      </button>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            ) : (
-                              <input
-                                type="text"
-                                value={turistEkleRow[field] ?? ""}
-                                placeholder={["Ad *", "Soyad *", "Pasaport No", "Uyruk", "Doğum Tarihi", "Telefon", "E-posta", "Notlar"][i]}
-                                onChange={(e) => setTuristEkleRow((prev) => prev ? { ...prev, [field]: e.target.value || null } : prev)}
-                                className="w-full text-sm rounded px-2 py-1 focus:outline-none min-w-[80px]"
-                                style={innerInputStyle}
-                              />
-                            )}
-                          </td>
-                        ))}
-                        <td className="px-2 py-1.5 whitespace-nowrap">
-                          <div className="flex gap-1">
-                            <button
-                              onClick={turistEkle}
-                              disabled={turistKaydediyor || !turistEkleRow.ad.trim() || !turistEkleRow.soyad.trim()}
-                              className="text-xs px-2 py-1 rounded text-white disabled:opacity-50"
-                              style={{ background: "var(--primary)" }}
-                            >
-                              Ekle
-                            </button>
-                            <button
-                              onClick={() => setTuristEkleRow(null)}
-                              className="text-xs px-2 py-1 rounded border"
-                              style={{ borderColor: "var(--card-inner-border, rgba(0,0,0,0.1))", color: "var(--text-muted)" }}
-                            >
-                              İptal
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-
-                    {turistler.length === 0 && !turistEkleRow && (
-                      <tr>
-                        <td colSpan={9} className="py-12 text-center text-sm" style={{ color: "var(--text-muted)" }}>
-                          Henüz turist kaydı yok. Turist Ekle butonuna tıkla.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              )}
-            </div>
-
-            {/* Footer */}
-            <div className="flex items-center justify-between px-6 py-3 border-t" style={{ borderColor: "var(--card-border)" }}>
-              <span className="text-xs" style={{ color: "var(--text-muted)" }}>
-                {turistler.length} turist kayıtlı
-              </span>
-              <button
-                onClick={() => setTuristModalProgram(null)}
-                className="text-sm px-4 py-1.5 rounded-lg border"
-                style={{ borderColor: "var(--card-inner-border, rgba(0,0,0,0.1))", color: "var(--text-muted)" }}
-              >
-                Kapat
+              <button onClick={() => setEtkinlikSecimProgram(null)} style={{ color: "var(--text-muted)" }}>
+                <X className="w-5 h-5" />
               </button>
             </div>
+
+            {etkinliklerYukleniyor ? (
+              <div className="py-8 text-center text-sm" style={{ color: "var(--text-muted)" }}>Yükleniyor...</div>
+            ) : programEtkinlikleri.length === 0 ? (
+              <div className="py-8 text-center space-y-3">
+                <CalendarDays className="w-8 h-8 mx-auto opacity-30" style={{ color: "var(--text-muted)" }} />
+                <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+                  Bu programın henüz takvime işlenmiş bir tarihi yok. Turist eklemeden önce takvime işle.
+                </p>
+                <button
+                  onClick={() => { const p = etkinlikSecimProgram; setEtkinlikSecimProgram(null); takvimeAc(p.id); }}
+                  className="text-xs px-4 py-2 rounded-lg text-white"
+                  style={{ background: "var(--primary)" }}
+                >
+                  Takvime İşle
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                {programEtkinlikleri.map((e) => {
+                  const bas = new Date(e.baslangic).toLocaleDateString("tr-TR", { day: "numeric", month: "short" });
+                  const bit = e.bitis ? new Date(e.bitis).toLocaleDateString("tr-TR", { day: "numeric", month: "short" }) : null;
+                  return (
+                    <button
+                      key={e.id}
+                      onClick={() => etkinlikSec(e)}
+                      className="w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg text-left hover:opacity-80 transition-opacity"
+                      style={innerInputStyle}
+                    >
+                      <span className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
+                        {bit ? `${bas} – ${bit}` : bas}
+                      </span>
+                      {e.rehber && (
+                        <span className="text-xs" style={{ color: "var(--text-muted)" }}>{e.rehber.name}</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       )}
 
-      {/* ─── Excel Yükleme Modal ──────────────────────────────────────────── */}
-      {excelModalAcik && turistModalProgram && (
-        <TuristExcelYukle
-          apiUrl={`/api/acente/programlar/${turistModalProgram.id}/turistler`}
-          cardStyle={cardStyle}
-          innerInputStyle={innerInputStyle}
-          onKapat={() => setExcelModalAcik(false)}
-          onTamamla={(eklenenler) => {
-            setTuristler((prev) => [...prev, ...eklenenler]);
-            setExcelModalAcik(false);
-          }}
+      {/* ─── Turist Listesi Modal ─────────────────────────────────────────── */}
+      {turistEtkinlik && (
+        <TuristListesiModal
+          etkinlikId={turistEtkinlik.id}
+          baslik={turistEtkinlik.baslik}
+          onKapat={() => setTuristEtkinlik(null)}
         />
       )}
 
@@ -955,8 +706,11 @@ export function AcenteProgramlar({ referansRehberler }: { referansRehberler: Reh
 
 // ─── Aktif Tur Badge ─────────────────────────────────────────────────────────
 function AktifTurBadge({ etkinlik }: { etkinlik: AktifEtkinlik }) {
-  const bas = new Date(etkinlik.baslangic).toLocaleDateString("tr-TR", { day: "numeric", month: "short" });
+  const basD = new Date(etkinlik.baslangic);
+  const bas = basD.toLocaleDateString("tr-TR", { day: "numeric", month: "short" });
   const bit = new Date(etkinlik.bitis).toLocaleDateString("tr-TR", { day: "numeric", month: "short" });
+  const g2 = (n: number) => String(n).padStart(2, "0");
+  const gunParam = `${basD.getFullYear()}-${g2(basD.getMonth() + 1)}-${g2(basD.getDate())}`;
 
   const yanit = etkinlik.rehberYanit;
   const { bg, text, dot } =
@@ -966,14 +720,17 @@ function AktifTurBadge({ etkinlik }: { etkinlik: AktifEtkinlik }) {
                           { bg: "rgba(99,102,241,0.12)",  text: "#6366f1", dot: "#818cf8" };
 
   return (
-    <span
-      className="inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full"
+    <Link
+      href={`/dashboard/acente/takvim?gun=${gunParam}`}
+      title="Takvimdeki etkinliğe git"
+      onClick={(e) => e.stopPropagation()}
+      className="inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full hover:opacity-80 transition-opacity"
       style={{ background: bg, color: text }}
     >
       <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: dot }} />
       {bas} – {bit}
       {etkinlik.rehber && <span className="opacity-70">· {etkinlik.rehber.name.split(" ")[0]}</span>}
-    </span>
+    </Link>
   );
 }
 

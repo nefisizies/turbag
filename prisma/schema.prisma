@@ -120,24 +120,6 @@ model TurProgrami {
   updatedAt   DateTime               @updatedAt
   acente      AcenteProfile          @relation(fields: [acenteId], references: [id], onDelete: Cascade)
   etkinlikler AcenteTakvimEtkinlik[]
-  turistler   TuristKayit[]
-}
-
-model TuristKayit {
-  id          String      @id @default(cuid())
-  programId   String
-  ad          String
-  soyad       String
-  pasaportNo  String?
-  uyruk       String?
-  dogumTarihi String?
-  telefon     String?
-  eposta      String?
-  notlar      String?
-  ekAlanlar   Json?
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
-  program     TurProgrami @relation(fields: [programId], references: [id], onDelete: Cascade)
 }
 
 model AcenteRehberBlok {

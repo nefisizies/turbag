@@ -11,11 +11,13 @@ import { HesapAyarlari } from "@/components/HesapAyarlari";
 export default async function RehberProfilPage({
   searchParams,
 }: {
-  searchParams: { yeni?: string };
+  searchParams: Promise<{ yeni?: string }>;
 }) {
   const session = await getServerSession(authOptions);
   const isAdmin = !!session?.user.adminId;
   if (!session || (session.user.role !== "REHBER" && !isAdmin)) redirect("/dashboard");
+
+  const { yeni } = await searchParams;
 
   const [profile, acenteBaglantiSayisi] = await Promise.all([
     prisma.rehberProfile.findUnique({
@@ -41,7 +43,7 @@ export default async function RehberProfilPage({
     }).then((r) => r.length),
   ]);
 
-  const isYeni = searchParams.yeni === "1" || !profile?.bio;
+  const isYeni = yeni === "1" || !profile?.bio;
 
   return (
     <div className="flex gap-8 items-start">

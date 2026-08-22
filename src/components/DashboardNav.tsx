@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
 import {
   LayoutDashboard, User, MessageCircle, LogOut, CalendarDays, BookOpen,
-  Menu, X, MapPin, Rss, Search, Bell, Briefcase,
+  Menu, X, MapPin, Rss, Search, Bell, Briefcase, Route,
 } from "lucide-react";
 import { Logo } from "@/components/Logo";
 import { BildirimDropdown } from "@/components/BildirimDropdown";
@@ -14,6 +14,7 @@ import { BildirimDropdown } from "@/components/BildirimDropdown";
 const rehberLinks = [
   { href: "/dashboard/rehber",           label: "Dashboard",   icon: LayoutDashboard },
   { href: "/dashboard/rehber/checkin",   label: "Check-in",    icon: MapPin },
+  { href: "/dashboard/rehber/turlarim",  label: "Aktif Turlar", icon: Route },
   { href: "/kesfet/feed",                label: "Feed",         icon: Rss },
   { href: "/kesfet/ilanlar",             label: "İlanlar",      icon: Briefcase },
   { href: "/dashboard/rehber/takvim",    label: "Takvim",       icon: CalendarDays },
@@ -27,6 +28,7 @@ const acenteLinks = [
   { href: "/kesfet/feed",                   label: "Feed",          icon: Rss },
   { href: "/dashboard/acente/ilanlarim",    label: "İlanlarım",     icon: Briefcase },
   { href: "/dashboard/acente/programlar",   label: "Programlar",    icon: BookOpen },
+  { href: "/dashboard/acente/takvim",       label: "Takvim",        icon: CalendarDays },
   { href: "/dashboard/acente/mesajlar",     label: "Mesajlar",      icon: MessageCircle },
   { href: "/dashboard/acente/profil",       label: "Profil",        icon: User },
 ];

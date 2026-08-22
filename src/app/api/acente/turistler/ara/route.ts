@@ -14,14 +14,9 @@ export async function GET(req: Request) {
   const q = searchParams.get("q")?.trim() ?? "";
   if (q.length < 2) return NextResponse.json([]);
 
-  const programIds = await prisma.turProgrami.findMany({
-    where: { acenteId: acente.id },
-    select: { id: true },
-  });
-
-  const turistler = await prisma.turistKayit.findMany({
+  const turistler = await prisma.etkinlikTurist.findMany({
     where: {
-      programId: { in: programIds.map((p) => p.id) },
+      etkinlik: { acenteId: acente.id },
       OR: [
         { ad: { contains: q, mode: "insensitive" } },
         { soyad: { contains: q, mode: "insensitive" } },

@@ -4,7 +4,6 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
-import Link from "next/link";
 import { MapPin, Globe, Users, FileText, Calendar } from "lucide-react";
 import { ImpersonateButton } from "@/components/ImpersonateButton";
 
@@ -108,14 +107,6 @@ export default async function AcentelerPage({
               </div>
 
               <div className="flex items-center gap-2 shrink-0">
-                <Link
-                  href={`/acente/${acente.slug}`}
-                  target="_blank"
-                  className="text-xs px-2.5 py-1.5 rounded-lg transition-colors hover:bg-white/10"
-                  style={{ color: "var(--card-text-muted)", border: "1px solid var(--card-border)" }}
-                >
-                  Profil
-                </Link>
                 <ImpersonateButton userId={acente.user.id} targetHref="/dashboard/acente" />
               </div>
             </div>

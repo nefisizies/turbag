@@ -8,7 +8,7 @@ import Link from "next/link";
 import {
   User, Star, MessageCircle, MapPin, Globe, Briefcase,
   CheckCircle, Clock, TrendingUp, CalendarDays, Trophy,
-  ArrowRight, Rss, Plus, Bell,
+  ArrowRight, Rss, Plus, Bell, Route,
 } from "lucide-react";
 import { MiniTakvim } from "@/components/MiniTakvim";
 import { HizliEtkinlikEkle } from "@/components/HizliEtkinlikEkle";
@@ -52,7 +52,7 @@ export default async function RehberDashboard() {
   const buAyBaslangic = new Date(simdi.getFullYear(), simdi.getMonth(), 1);
   const buAyBitis = new Date(simdi.getFullYear(), simdi.getMonth() + 1, 1);
 
-  const [unreadCount, totalMessages, reviewData, sonMesajlar, yaklasanEtkinlikler, buAyEtkinlikler, gelenDavetler] =
+  const [unreadCount, totalMessages, reviewData, sonMesajlar, yaklasanEtkinlikler, buAyEtkinlikler, gelenDavetler, aktifTurSayisi] =
     await Promise.all([
       prisma.message.count({ where: { toUserId: session.user.id, isRead: false } }),
       prisma.message.count({ where: { toUserId: session.user.id } }),
@@ -89,6 +89,13 @@ export default async function RehberDashboard() {
         take: 5,
         include: { acente: { select: { companyName: true, city: true, logoUrl: true } } },
       }) : Promise.resolve([]),
+      profile ? prisma.takvimEtkinlik.count({
+        where: {
+          rehberId: profile.id,
+          tur: "REZERVASYON",
+          OR: [{ bitis: { gte: simdi } }, { bitis: null, baslangic: { gte: simdi } }],
+        },
+      }) : Promise.resolve(0),
     ]);
 
   const alanlar = [
@@ -156,8 +163,9 @@ export default async function RehberDashboard() {
       </div>
 
       {/* Stat tiles */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
         {[
+          { icon: Route,         color: "#0EA5E9",         num: aktifTurSayisi, label: "Aktif Turlar", sub: aktifTurSayisi > 0 ? "Devam eden/gelecek" : undefined, href: "/dashboard/rehber/turlarim" },
           { icon: MessageCircle, color: "var(--upe-teal)", num: totalMessages, label: "Mesaj", sub: unreadCount > 0 ? `${unreadCount} okunmamış` : undefined, subColor: "var(--upe-danger)", href: "/dashboard/rehber/mesajlar" },
           { icon: Star,          color: "#F59E0B",         num: avgRating,      label: "Puan",   sub: `${reviewData._count} değerlendirme` },
           { icon: CheckCircle,   color: "#16A34A",         num: verifiedLicenses, label: "Onaylı Lisans", sub: pendingLicenses > 0 ? `${pendingLicenses} bekliyor` : undefined, subColor: "#D97706" },
@@ -250,8 +258,9 @@ export default async function RehberDashboard() {
               const etiket = fark === 0 ? "Bugün" : fark === 1 ? "Yarın" : `${fark}g`;
               const acil = fark <= 1;
               const aylar = ["Oca","Şub","Mar","Nis","May","Haz","Tem","Ağu","Eyl","Eki","Kas","Ara"];
+              const basTarihStr = `${bas.getFullYear()}-${String(bas.getMonth() + 1).padStart(2, "0")}-${String(bas.getDate()).padStart(2, "0")}`;
               return (
-                <Link key={e.id} href="/dashboard/rehber/takvim"
+                <Link key={e.id} href={`/dashboard/rehber/takvim?tarih=${basTarihStr}`}
                   className="flex items-center gap-3 px-5 py-3.5 transition-colors"
                   style={{
                     borderTop: i > 0 ? "1px solid var(--border-1)" : "none",
@@ -331,7 +340,7 @@ export default async function RehberDashboard() {
             sonMesajlar.map((msg, i) => {
               const ad = msg.from.acenteProfile?.companyName ?? msg.from.email ?? "Acente";
               return (
-                <Link key={msg.id} href="/dashboard/rehber/mesajlar"
+                <Link key={msg.id} href={`/dashboard/rehber/mesajlar?ile=${msg.from.id}`}
                   className="flex items-center gap-3 px-5 py-3.5 transition-colors"
                   style={{ borderTop: "1px solid var(--border-1)", textDecoration: "none" }}
                 >
