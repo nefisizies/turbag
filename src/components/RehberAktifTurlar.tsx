@@ -3,14 +3,22 @@
 import { useState, useEffect } from "react";
 import {
   CalendarDays, MapPin, Building2, Users, X, Clock, Route as RouteIcon,
+  Phone, Cake, UserPlus, MessageSquareText, Send, Pencil,
 } from "lucide-react";
-import { MisafirDetayModal } from "./MisafirDetayModal";
+import { MisafirDetayModal, vcardIndir } from "./MisafirDetayModal";
+import { HazirMesajModal } from "./HazirMesajModal";
+import { TopluMesajModal } from "./TopluMesajModal";
+import { RehbereKaydet } from "./RehbereKaydet";
+import {
+  HazirMesaj, hazirMesajlariOku, hazirMesajlariYaz, mesajDoldur,
+  whatsappAc as waAc, waUygulamaOku, aktifSablonIdOku, aktifSablonIdYaz,
+} from "@/lib/hazirMesaj";
 
 type Acente = { companyName: string; city: string | null; logoUrl: string | null };
 type TuristSatir = {
   id: string; ad: string; soyad: string; pasaportNo: string | null;
   uyruk: string | null; telefon: string | null; dogumTarihi: string | null;
-  eposta: string | null; notlar: string | null;
+  eposta: string | null; notlar: string | null; ekAlanlar?: unknown;
 };
 type AcenteEtkinlik = {
   id: string;
@@ -53,6 +61,9 @@ export function RehberAktifTurlar() {
   const [turlar, setTurlar] = useState<Tur[]>([]);
   const [yukleniyor, setYukleniyor] = useState(true);
   const [secili, setSecili] = useState<Tur | null>(null);
+  const [hazirMesajlar, setHazirMesajlar] = useState<HazirMesaj[]>(hazirMesajlariOku);
+  const [aktifSablonId, setAktifSablonId] = useState<string | null>(aktifSablonIdOku);
+  const [mesajModalAcik, setMesajModalAcik] = useState(false);
 
   useEffect(() => {
     fetch("/api/rehber/aktif-turlar")
@@ -60,6 +71,19 @@ export function RehberAktifTurlar() {
       .then((data) => setTurlar(Array.isArray(data) ? data : []))
       .finally(() => setYukleniyor(false));
   }, []);
+
+  function mesajlariKaydet(liste: HazirMesaj[]) {
+    setHazirMesajlar(liste);
+    hazirMesajlariYaz(liste);
+    if (aktifSablonId && !liste.some((m) => m.id === aktifSablonId)) {
+      aktifSablonSec(liste[0]?.id ?? null);
+    }
+  }
+
+  function aktifSablonSec(id: string | null) {
+    setAktifSablonId(id);
+    aktifSablonIdYaz(id);
+  }
 
   if (yukleniyor) {
     return <div className="py-16 text-center text-sm" style={{ color: "var(--text-muted)" }}>Yükleniyor...</div>;
@@ -79,8 +103,37 @@ export function RehberAktifTurlar() {
 
   return (
     <div className="space-y-3">
+      <div className="flex justify-end">
+        <button
+          onClick={() => setMesajModalAcik(true)}
+          className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border"
+          style={{ borderColor: "var(--card-border)", color: "var(--text-muted)" }}
+        >
+          <MessageSquareText className="w-3.5 h-3.5" style={{ color: "var(--primary)" }} />
+          Hazır mesajlar
+        </button>
+      </div>
+
       {turlar.map((t) => <TurKarti key={t.id} tur={t} onAc={() => setSecili(t)} />)}
-      {secili && <TurDetayModal tur={secili} onKapat={() => setSecili(null)} />}
+
+      {secili && (
+        <TurDetayModal
+          tur={secili}
+          hazirMesajlar={hazirMesajlar}
+          aktifSablonId={aktifSablonId}
+          onAktifSablonChange={aktifSablonSec}
+          onSablonDuzenle={() => setMesajModalAcik(true)}
+          onKapat={() => setSecili(null)}
+        />
+      )}
+
+      {mesajModalAcik && (
+        <HazirMesajModal
+          mesajlar={hazirMesajlar}
+          onKaydet={mesajlariKaydet}
+          onKapat={() => setMesajModalAcik(false)}
+        />
+      )}
     </div>
   );
 }
@@ -162,13 +215,26 @@ function TurKarti({ tur: t, onAc }: { tur: Tur; onAc: () => void }) {
   );
 }
 
-function TurDetayModal({ tur: t, onKapat }: { tur: Tur; onKapat: () => void }) {
+function TurDetayModal({
+  tur: t, hazirMesajlar, aktifSablonId, onAktifSablonChange, onSablonDuzenle, onKapat,
+}: {
+  tur: Tur;
+  hazirMesajlar: HazirMesaj[];
+  aktifSablonId: string | null;
+  onAktifSablonChange: (id: string | null) => void;
+  onSablonDuzenle: () => void;
+  onKapat: () => void;
+}) {
+  const aktifSablon = hazirMesajlar.find((m) => m.id === aktifSablonId) ?? null;
   const ae = t.acenteEtkinlik;
   const baslangic = new Date(t.baslangic);
   const bitis = t.bitis ? new Date(t.bitis) : baslangic;
   const durum = turDurumu(baslangic, bitis);
   const segmentler = ae?.program?.segmentler ? normalizeSegmentler(ae.program.segmentler) : [];
   const [detayTurist, setDetayTurist] = useState<TuristSatir | null>(null);
+  const [topluAcik, setTopluAcik] = useState(false);
+  const telefonluSayisi = ae?.turistler.filter((tr) => tr.telefon && tr.telefon.trim()).length ?? 0;
+  const vcardNot = `${ae?.program?.ad ?? t.baslik} · ${formatTarih(t.baslangic)}`;
 
   let offset = 0;
   const guzergah = segmentler.map((seg, i) => {
@@ -243,25 +309,66 @@ function TurDetayModal({ tur: t, onKapat }: { tur: Tur; onKapat: () => void }) {
 
         {ae && ae.turistler.length > 0 && (
           <div className="pt-2 border-t space-y-2" style={{ borderColor: "var(--card-border)" }}>
-            <div className="flex items-center gap-1.5">
-              <Users className="w-4 h-4" style={{ color: "var(--primary)" }} />
-              <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-sm font-medium flex items-center gap-1.5" style={{ color: "var(--text-primary)" }}>
+                <Users className="w-4 h-4" style={{ color: "var(--primary)" }} />
                 Turistler ({ae.turistler.length})
               </p>
+              {telefonluSayisi > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setTopluAcik(true)}
+                  className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg text-white hover:opacity-90"
+                  style={{ background: "#25D366" }}
+                >
+                  <Send className="w-3.5 h-3.5" /> Toplu mesaj
+                </button>
+              )}
             </div>
+
+            <RehbereKaydet etkinlikId={ae.id} turistler={ae.turistler} not={vcardNot} />
+
+            {hazirMesajlar.length > 0 && (
+              <div
+                className="flex items-center gap-2 text-xs rounded-lg px-2.5 py-2"
+                style={{ background: "var(--card-inner-bg, rgba(0,0,0,0.04))" }}
+              >
+                <MessageSquareText className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--primary)" }} />
+                <span className="shrink-0" style={{ color: "var(--text-muted)" }}>Numaraya tıklayınca:</span>
+                <select
+                  value={aktifSablonId ?? ""}
+                  onChange={(e) => onAktifSablonChange(e.target.value || null)}
+                  className="flex-1 min-w-0 rounded-md px-1.5 py-1 focus:outline-none"
+                  style={{ background: "var(--card-bg)", border: "1px solid var(--card-inner-border, rgba(0,0,0,0.12))", color: "var(--text-primary)" }}
+                >
+                  <option value="">Boş mesaj (sadece sohbeti aç)</option>
+                  {hazirMesajlar.map((m) => (
+                    <option key={m.id} value={m.id}>{m.baslik || "Şablon"}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={onSablonDuzenle}
+                  className="p-1 rounded hover:opacity-70 shrink-0"
+                  style={{ color: "var(--text-muted)" }}
+                  title="Şablonları düzenle"
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+
             <div className="space-y-1.5">
               {ae.turistler.map((tur, i) => (
-                <button key={tur.id} onClick={() => setDetayTurist(tur)}
-                  className="w-full text-left rounded-lg px-3 py-2 flex flex-col gap-0.5 hover:opacity-80 transition-opacity"
-                  style={{ background: "var(--card-inner-bg, rgba(0,0,0,0.04))", border: "1px solid var(--card-inner-border, rgba(0,0,0,0.08))" }}>
-                  <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>{i + 1}. {tur.ad} {tur.soyad}</p>
-                  <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs" style={{ color: "var(--text-muted)" }}>
-                    {tur.uyruk && <span>{tur.uyruk}</span>}
-                    {tur.pasaportNo && <span>Pasaport: {tur.pasaportNo}</span>}
-                    {tur.telefon && <span>{tur.telefon}</span>}
-                    {tur.dogumTarihi && <span>D.T: {tur.dogumTarihi}</span>}
-                  </div>
-                </button>
+                <TuristSatiri
+                  key={tur.id}
+                  turist={tur}
+                  index={i}
+                  hazirMesajlar={hazirMesajlar}
+                  aktifSablon={aktifSablon}
+                  onSablonDuzenle={onSablonDuzenle}
+                  onDetay={() => setDetayTurist(tur)}
+                />
               ))}
             </div>
           </div>
@@ -273,7 +380,168 @@ function TurDetayModal({ tur: t, onKapat }: { tur: Tur; onKapat: () => void }) {
       </div>
 
       {detayTurist && (
-        <MisafirDetayModal turist={detayTurist} onKapat={() => setDetayTurist(null)} />
+        <MisafirDetayModal
+          turist={detayTurist}
+          acenteAdi={ae?.acente?.companyName}
+          onKapat={() => setDetayTurist(null)}
+        />
+      )}
+
+      {topluAcik && ae && (
+        <TopluMesajModal
+          etkinlikId={ae.id}
+          turistler={ae.turistler}
+          hazirMesajlar={hazirMesajlar}
+          aktifSablon={aktifSablon}
+          not={vcardNot}
+          onKapat={() => setTopluAcik(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+function TuristSatiri({
+  turist, index, hazirMesajlar, aktifSablon, onSablonDuzenle, onDetay,
+}: {
+  turist: TuristSatir;
+  index: number;
+  hazirMesajlar: HazirMesaj[];
+  aktifSablon: HazirMesaj | null;
+  onSablonDuzenle: () => void;
+  onDetay: () => void;
+}) {
+  const [telMenuAcik, setTelMenuAcik] = useState(false);
+  const [metin, setMetin] = useState("");
+
+  const cipStyle = { color: "var(--primary)" } as React.CSSProperties;
+  const aktifMetin = aktifSablon ? mesajDoldur(aktifSablon.metin, turist) : "";
+
+  function menuToggle() {
+    if (!telMenuAcik && !metin) {
+      setMetin(aktifMetin || (hazirMesajlar[0] ? mesajDoldur(hazirMesajlar[0].metin, turist) : ""));
+    }
+    setTelMenuAcik((p) => !p);
+  }
+
+  // Numaraya tıklama: seçili şablon doluyken direkt WhatsApp'ı hazır aç.
+  function whatsappHizli() {
+    if (!turist.telefon) return;
+    waAc(turist.telefon, aktifMetin, waUygulamaOku());
+  }
+
+  function whatsappAc() {
+    if (!turist.telefon) return;
+    waAc(turist.telefon, metin, waUygulamaOku());
+    setTelMenuAcik(false);
+  }
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onDetay}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onDetay(); } }}
+      className="relative w-full text-left rounded-lg px-3 py-2 flex flex-col gap-0.5 hover:opacity-80 transition-opacity cursor-pointer"
+      style={{ background: "var(--card-inner-bg, rgba(0,0,0,0.04))", border: "1px solid var(--card-inner-border, rgba(0,0,0,0.08))" }}
+    >
+      <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>{index + 1}. {turist.ad} {turist.soyad}</p>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs" style={{ color: "var(--text-muted)" }}>
+        {turist.uyruk && <span>{turist.uyruk}</span>}
+        {turist.pasaportNo && <span>Pasaport: {turist.pasaportNo}</span>}
+        {turist.telefon && (
+          <span className="inline-flex items-center gap-1">
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); whatsappHizli(); }}
+              title={aktifSablon ? `WhatsApp: "${aktifSablon.baslik || "şablon"}" mesajıyla aç` : "WhatsApp'ta aç"}
+              className="inline-flex items-center gap-1 underline decoration-dotted underline-offset-2 font-medium"
+              style={cipStyle}
+            >
+              <Phone className="w-3 h-3" />{turist.telefon}
+            </button>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); menuToggle(); }}
+              title="Mesajı düzenle / şablon seç"
+              className="p-0.5 rounded hover:opacity-70"
+              style={{ color: "var(--text-muted)" }}
+            >
+              <Pencil className="w-3 h-3" />
+            </button>
+          </span>
+        )}
+        {turist.dogumTarihi && (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onDetay(); }}
+            className="inline-flex items-center gap-1 underline decoration-dotted underline-offset-2 font-medium"
+            style={cipStyle}
+          >
+            <Cake className="w-3 h-3" />D.T: {turist.dogumTarihi}
+          </button>
+        )}
+      </div>
+
+      {telMenuAcik && turist.telefon && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="mt-2 rounded-lg p-2.5 space-y-2 cursor-default"
+          style={{ background: "var(--card-bg)", border: "1px solid var(--card-inner-border, rgba(0,0,0,0.12))" }}
+        >
+          {hazirMesajlar.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {hazirMesajlar.map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => setMetin(mesajDoldur(m.metin, turist))}
+                  className="text-[11px] px-2 py-1 rounded-full hover:opacity-80"
+                  style={{ background: "var(--card-inner-bg, rgba(0,0,0,0.05))", border: "1px solid var(--card-inner-border, rgba(0,0,0,0.1))", color: "var(--text-primary)" }}
+                >
+                  {m.baslik || "Şablon"}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <textarea
+            value={metin}
+            onChange={(e) => setMetin(e.target.value)}
+            placeholder="Mesajını yaz… WhatsApp açılınca hazır olacak 👋"
+            rows={3}
+            className="w-full text-xs rounded-lg px-2.5 py-2 focus:outline-none resize-y"
+            style={{ background: "var(--card-inner-bg, rgba(0,0,0,0.04))", border: "1px solid var(--card-inner-border, rgba(0,0,0,0.1))", color: "var(--text-primary)" }}
+          />
+
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={whatsappAc}
+              className="flex-1 flex items-center justify-center gap-1.5 text-xs py-2 rounded-lg text-white hover:opacity-90"
+              style={{ background: "#25D366" }}
+            >
+              <Send className="w-3.5 h-3.5" /> WhatsApp&apos;ta aç
+            </button>
+            <button
+              type="button"
+              onClick={() => { vcardIndir(turist); setTelMenuAcik(false); }}
+              className="flex items-center justify-center gap-1.5 text-xs px-2.5 py-2 rounded-lg border hover:opacity-80"
+              style={{ borderColor: "var(--card-inner-border, rgba(0,0,0,0.12))", color: "var(--text-primary)" }}
+            >
+              <UserPlus className="w-3.5 h-3.5" /> Kaydet
+            </button>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => { setTelMenuAcik(false); onSablonDuzenle(); }}
+            className="flex items-center gap-1 text-[11px] hover:opacity-80"
+            style={{ color: "var(--text-muted)" }}
+          >
+            <Pencil className="w-3 h-3" /> Hazır mesajları düzenle
+          </button>
+        </div>
       )}
     </div>
   );

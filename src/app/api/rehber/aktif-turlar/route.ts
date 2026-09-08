@@ -30,7 +30,7 @@ export async function GET() {
           acente: { select: { companyName: true, city: true, logoUrl: true } },
           program: { select: { ad: true, segmentler: true } },
           turistler: {
-            select: { id: true, ad: true, soyad: true, pasaportNo: true, uyruk: true, telefon: true, dogumTarihi: true, eposta: true, notlar: true },
+            select: { id: true, ad: true, soyad: true, pasaportNo: true, uyruk: true, telefon: true, dogumTarihi: true, eposta: true, notlar: true, ekAlanlar: true },
           },
           _count: { select: { turistler: true } },
         },

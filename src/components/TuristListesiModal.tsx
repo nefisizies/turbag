@@ -15,6 +15,7 @@ type Turist = {
   telefon: string | null;
   eposta: string | null;
   notlar: string | null;
+  ekAlanlar?: unknown;
 };
 
 const BOSH_TURIST = (): Omit<Turist, "id"> => ({
