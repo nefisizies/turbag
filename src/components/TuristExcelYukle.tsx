@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, Fragment } from "react";
 import { Upload, X, Check, AlertCircle, ChevronDown, ChevronUp } from "lucide-react";
 import * as XLSX from "xlsx";
 
@@ -266,8 +266,8 @@ export function TuristExcelYukle({ apiUrl, onTamamla, onKapat, cardStyle, innerI
                     {satirlar.map((s, i) => {
                       const ekAlanSayisi = Object.keys(s.ekAlanlar ?? {}).length;
                       return (
-                        <>
-                          <tr key={i} style={{ borderBottom: "1px solid var(--card-border)", opacity: s._hata ? 0.5 : 1 }}>
+                        <Fragment key={i}>
+                          <tr style={{ borderBottom: "1px solid var(--card-border)", opacity: s._hata ? 0.5 : 1 }}>
                             <td className="px-3 py-2" style={{ color: "var(--text-primary)" }}>{s.ad || <span style={{ color: "#ef4444" }}>—</span>}</td>
                             <td className="px-3 py-2" style={{ color: "var(--text-primary)" }}>{s.soyad || <span style={{ color: "#ef4444" }}>—</span>}</td>
                             <td className="px-3 py-2" style={{ color: "var(--text-muted)" }}>{s.pasaportNo ?? "—"}</td>
@@ -301,7 +301,7 @@ export function TuristExcelYukle({ apiUrl, onTamamla, onKapat, cardStyle, innerI
                               </td>
                             </tr>
                           )}
-                        </>
+                        </Fragment>
                       );
                     })}
                   </tbody>

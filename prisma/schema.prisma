@@ -220,6 +220,9 @@ model EtkinlikTurist {
   eposta      String?
   notlar      String?
   ekAlanlar   Json?
+  arsivlendi  Boolean              @default(false)
+  arsivEtiketi String?
+  arsivTarihi DateTime?
   createdAt   DateTime             @default(now())
   etkinlik    AcenteTakvimEtkinlik @relation(fields: [etkinlikId], references: [id], onDelete: Cascade)
 }

@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { X, Phone, Mail, Flag, IdCard, Cake, FileText, UserPlus, MessageCircle, Building2, Tag } from "lucide-react";
+import { X, Phone, Mail, Flag, IdCard, Cake, FileText, UserPlus, MessageCircle, Building2, Tag, History } from "lucide-react";
 import { whatsappNumarasi } from "@/lib/hazirMesaj";
+
+type GecmisKarsilasma = { tarih: string; turBasligi: string; acenteAdi: string };
 
 type Turist = {
   id: string;
@@ -15,6 +17,7 @@ type Turist = {
   eposta: string | null;
   notlar: string | null;
   ekAlanlar?: unknown;
+  oncekiKarsilasma?: GecmisKarsilasma | null;
 };
 
 function ekAlanListesi(ham: unknown): [string, string][] {
@@ -95,6 +98,21 @@ export function MisafirDetayModal({
         </div>
 
         <div className="px-6 py-2 overflow-y-auto">
+          {turist.oncekiKarsilasma && (
+            <div
+              className="flex items-start gap-2.5 mt-3 mb-1 px-3 py-2.5 rounded-xl text-xs"
+              style={{ background: "color-mix(in srgb, #f59e0b 12%, transparent)", border: "1px solid color-mix(in srgb, #f59e0b 30%, transparent)", color: "var(--text-primary)" }}
+            >
+              <History className="w-4 h-4 shrink-0 mt-0.5" style={{ color: "#f59e0b" }} />
+              <span>
+                Bu misafirle daha önce{" "}
+                <strong>
+                  {new Date(turist.oncekiKarsilasma.tarih).toLocaleDateString("tr-TR", { day: "numeric", month: "long", year: "numeric" })}
+                </strong>{" "}
+                tarihinde <strong>{turist.oncekiKarsilasma.acenteAdi}</strong> üzerinden düzenlenen &quot;{turist.oncekiKarsilasma.turBasligi}&quot; turunda karşılaşmış olabilirsiniz.
+              </span>
+            </div>
+          )}
           {acenteAdi && <BilgiSatiri icon={<Building2 className="w-4 h-4" />} label="Acente" value={acenteAdi} />}
           <BilgiSatiri icon={<IdCard className="w-4 h-4" />} label="Pasaport No" value={turist.pasaportNo} />
           <BilgiSatiri icon={<Flag className="w-4 h-4" />} label="Uyruk" value={turist.uyruk} />

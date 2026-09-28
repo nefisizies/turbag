@@ -15,10 +15,12 @@ import {
 } from "@/lib/hazirMesaj";
 
 type Acente = { companyName: string; city: string | null; logoUrl: string | null };
+type GecmisKarsilasma = { tarih: string; turBasligi: string; acenteAdi: string };
 type TuristSatir = {
   id: string; ad: string; soyad: string; pasaportNo: string | null;
   uyruk: string | null; telefon: string | null; dogumTarihi: string | null;
   eposta: string | null; notlar: string | null; ekAlanlar?: unknown;
+  oncekiKarsilasma?: GecmisKarsilasma | null;
 };
 type AcenteEtkinlik = {
   id: string;
