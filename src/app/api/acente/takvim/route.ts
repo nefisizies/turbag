@@ -60,7 +60,7 @@ export async function GET(req: Request) {
     include: {
       rehber: { select: { id: true, name: true, city: true, photoUrl: true, slug: true } },
       program: { select: { id: true, ad: true, segmentler: true } },
-      _count: { select: { turistler: true } },
+      _count: { select: { turistler: { where: { arsivlendi: false } } } },
     },
     orderBy,
   });

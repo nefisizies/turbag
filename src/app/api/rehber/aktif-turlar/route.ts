@@ -34,7 +34,7 @@ export async function GET() {
             where: { arsivlendi: false },
             select: { id: true, ad: true, soyad: true, pasaportNo: true, uyruk: true, telefon: true, dogumTarihi: true, eposta: true, notlar: true, ekAlanlar: true, etkinlikId: true },
           },
-          _count: { select: { turistler: true } },
+          _count: { select: { turistler: { where: { arsivlendi: false } } } },
         },
       },
     },
